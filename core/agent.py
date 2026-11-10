@@ -87,7 +87,9 @@ class Agent:
                     messages=messages,
                     system=system,
                     tools=tool_schemas,
-                    max_tokens=8000,
+                    # Artwork specs are long. Give the model room to design a
+                    # whole panel set in one call instead of dribbling it out.
+                    max_tokens=16000,
                 )
             except llm.LLMError as exc:
                 emit({"type": "error", "text": str(exc)})

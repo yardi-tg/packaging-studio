@@ -34,7 +34,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import artwork, config, dieline, fonts, pdfwriter, registry, store
+from core import artwork, config, dieline, fonts, imagegen, pdfwriter, registry, store
 
 MAX_BODY = 20 * 1024 * 1024
 SETTING_KEYS = ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
@@ -133,6 +133,7 @@ class Handler(BaseHTTPRequestHandler):
                      "note": "fast and cheap, good for small fixes"},
                 ],
                 "pricing": config.MODEL_PRICING,
+                "scenes": imagegen.scene_catalog(),
                 "fonts": {k: {"name": v[0], "hint": v[2]}
                           for k, v in artwork.FONT_CATALOG.items()},
             })
@@ -251,6 +252,16 @@ class Handler(BaseHTTPRequestHandler):
             config.write_env(updates)
             return self._json({"ok": True, "config": config.status()})
 
+        if parsed.path == "/api/settings/probe":
+            # Runs on the user's machine, which is the only place with a direct
+            # route to the image provider.
+            try:
+                result = imagegen.probe()
+            except Exception as exc:
+                result = {"ok": False, "message": f"{type(exc).__name__}: {exc}"}
+            result["config"] = config.status()
+            return self._json(result)
+
         if parsed.path == "/api/projects":
             body = self._body()
             project = store.create(body.get("name") or "Untitled project",
@@ -273,6 +284,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._layers(project)
             if action == "export":
                 return self._export(project)
+            if action == "photoshoot":
+                return self._photoshoot(project)
             if action == "clear":
                 project["messages"] = []
                 store.save(project)
@@ -303,6 +316,31 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(str(exc), 413)
         store.save(project)
         self._json({"ok": True, "assets": added})
+
+    def _photoshoot(self, project):
+        body = self._body()
+        render = body.get("render") or ""
+        if "," in render:
+            render = render.split(",", 1)[1]
+        try:
+            png = base64.b64decode(render)
+        except Exception:
+            png = b""
+        if len(png) < 1000:
+            return self._error("No usable render was supplied. Open the 3D tab "
+                               "first so there is something to photograph.", 400)
+        try:
+            asset = imagegen.photoshoot(
+                project, png,
+                scene=body.get("scene") or "studio",
+                notes=body.get("notes") or "",
+                aspect=body.get("aspect") or "1:1",
+            )
+        except RuntimeError as exc:
+            return self._error(str(exc), 502)
+        store.save(project)
+        self._json({"ok": True, "asset": asset,
+                    "url": f"/api/projects/{project['id']}/assets/{asset['id']}"})
 
     def _structure(self, project):
         body = self._body()

@@ -14,9 +14,10 @@ const api = async (path, opts = {}) => {
 };
 
 const state = {
-  config: {}, agents: [], boxTypes: {}, models: [],
+  config: {}, agents: [], boxTypes: {}, models: [], scenes: [],
   projectId: null, project: null,
   pending: [], view: "flat", busy: false, three: null,
+  surface: "studio", scene: "studio",
 };
 
 /* money ------------------------------------------------------------- */
@@ -54,11 +55,12 @@ async function boot() {
     Object.assign(state, {
       config: status.config, agents: status.agents,
       boxTypes: status.box_types, models: status.models,
-      pricing: status.pricing || {},
+      scenes: status.scenes || [], pricing: status.pricing || {},
     });
     fillBoxTypes();
     fillModels();
     paintKeyState();
+    paintScenes();
   } catch (err) {
     toast("Cannot reach the server: " + err.message, true);
     return;
@@ -173,6 +175,7 @@ function paintAll() {
   paintLayers();
   paintAssets();
   paintAttachments();
+  paintGallery();
   refreshView();
 }
 
@@ -352,6 +355,7 @@ async function refreshView() {
   else if (state.view === "dieline") await loadSvg("dieline", "view-dieline");
   else if (state.view === "panels") await loadFaces();
   else if (state.view === "three") await loadThree();
+  else if (state.view === "photo") { paintScenes(); paintGallery(); }
   else if (state.view === "export") await loadExports();
 }
 
@@ -417,16 +421,131 @@ async function loadExports() {
 
 async function loadThree() {
   if (typeof THREE === "undefined") {
-    $("view-three").innerHTML =
-      `<p class="note">The 3D library did not load.</p>`;
+    $("view-three").innerHTML = `<p class="note">The 3D library did not load.</p>`;
     return;
   }
   let data;
   try { data = await api(`/api/projects/${state.projectId}/textures`); }
   catch (err) { toast(err.message, true); return; }
-  if (!state.three) state.three = createThree($("three"));
+  if (!state.three) { state.three = createThree($("three")); paintSurfaces(); }
   state.three.build(data);
 }
+
+/* Surfaces to stand the package on. Chosen by eye in the viewport, and the
+   names line up with the photo scenes so one leads naturally into the other. */
+const SURFACES = [
+  { id: "studio", label: "Studio",  swatch: "#e9e6df" },
+  { id: "marble", label: "Marble",  swatch: "#eceae5" },
+  { id: "wood",   label: "Wood",    swatch: "#9a6c42" },
+  { id: "linen",  label: "Linen",   swatch: "#d6cdbb" },
+  { id: "shelf",  label: "Shelf",   swatch: "#c2a983" },
+  { id: "dark",   label: "Dark",    swatch: "#23262d" },
+];
+
+function paintSurfaces() {
+  const strip = $("sceneStrip");
+  strip.innerHTML = "";
+  for (const s of SURFACES) {
+    const btn = document.createElement("button");
+    btn.className = "surface" + (s.id === state.surface ? " on" : "");
+    btn.innerHTML = `<i style="background:${s.swatch}"></i><span>${s.label}</span>`;
+    btn.onclick = () => {
+      state.surface = s.id;
+      state.three?.setSurface(s.id);
+      paintSurfaces();
+    };
+    strip.appendChild(btn);
+  }
+}
+
+/* --- procedural materials: no texture files to ship or download --- */
+
+function canvasTexture(width, height, draw) {
+  const c = document.createElement("canvas");
+  c.width = width; c.height = height;
+  draw(c.getContext("2d"), width, height);
+  const t = new THREE.CanvasTexture(c);
+  if (THREE.sRGBEncoding !== undefined) t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
+function grain(ctx, w, h, amount, alpha) {
+  for (let i = 0; i < amount; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.random() * alpha})`;
+    ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1);
+  }
+}
+
+const SURFACE_ART = {
+  wood: (ctx, w, h) => {
+    ctx.fillStyle = "#8d6039"; ctx.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 2 + Math.random() * 5) {
+      ctx.strokeStyle = `rgba(${60 + Math.random() * 40},${35 + Math.random() * 25},18,${0.05 + Math.random() * 0.16})`;
+      ctx.lineWidth = 0.6 + Math.random() * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= w; x += 32) ctx.lineTo(x, y + Math.sin(x / 70) * 3.5 + (Math.random() - 0.5) * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      const kx = Math.random() * w, ky = Math.random() * h;
+      for (let r = 2; r < 18; r += 2.4) {
+        ctx.strokeStyle = `rgba(70,42,20,${0.2 - r / 110})`;
+        ctx.lineWidth = 1.1; ctx.beginPath();
+        ctx.ellipse(kx, ky, r, r * 0.55, 0.5, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    grain(ctx, w, h, 9000, 0.05);
+  },
+  marble: (ctx, w, h) => {
+    ctx.fillStyle = "#e8e6e0"; ctx.fillRect(0, 0, w, h);
+    const vein = (count, alpha, width) => {
+      for (let i = 0; i < count; i++) {
+        ctx.strokeStyle = `rgba(${86 + Math.random() * 46},${88 + Math.random() * 46},${96 + Math.random() * 46},${alpha * (0.4 + Math.random())})`;
+        ctx.lineWidth = width * (0.4 + Math.random());
+        ctx.beginPath();
+        let x = Math.random() * w, y = -10;
+        ctx.moveTo(x, y);
+        while (y < h + 10) {
+          x += (Math.random() - 0.45) * 64;
+          y += 10 + Math.random() * 22;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    };
+    vein(9, 0.34, 3.2);    // the few bold ones
+    vein(30, 0.14, 1.1);   // the hairline network
+    grain(ctx, w, h, 5000, 0.03);
+  },
+  linen: (ctx, w, h) => {
+    ctx.fillStyle = "#ded5c3"; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(120,108,88,.1)"; ctx.lineWidth = 1;
+    for (let i = 0; i < w; i += 3) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke();
+    }
+    grain(ctx, w, h, 14000, 0.07);
+  },
+  shelf: (ctx, w, h) => {
+    SURFACE_ART.wood(ctx, w, h);
+    ctx.fillStyle = "rgba(230,215,190,.26)"; ctx.fillRect(0, 0, w, h);
+  },
+  dark: (ctx, w, h) => {
+    ctx.fillStyle = "#23262d"; ctx.fillRect(0, 0, w, h);
+    grain(ctx, w, h, 18000, 0.22);
+  },
+  studio: (ctx, w, h) => { ctx.fillStyle = "#e4e1da"; ctx.fillRect(0, 0, w, h); },
+};
+
+const BACKDROP = {
+  studio: ["#f4f2ee", "#dcd8d0"],
+  marble: ["#f6f5f2", "#d9d6cf"],
+  wood:   ["#efe3d2", "#c5a984"],
+  linen:  ["#f1ebe0", "#d4c9b6"],
+  shelf:  ["#efe6d8", "#c9b89c"],
+  dark:   ["#1d2026", "#0e1014"],
+};
 
 function createThree(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true,
@@ -434,29 +553,118 @@ function createThree(canvas) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Filmic tone mapping plus sRGB output is most of what separates a render
+  // that looks like a render from one that looks like a photograph.
+  if (THREE.ACESFilmicToneMapping) renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
   const root = new THREE.Group();
   scene.add(root);
 
-  const key = new THREE.DirectionalLight(0xffffff, 0.95);
-  key.position.set(4, 6, 5);
+  const key = new THREE.DirectionalLight(0xfff6e8, 2.1);
+  key.position.set(4.5, 7, 5.5);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.near = 1; key.shadow.camera.far = 30;
-  const fill = new THREE.DirectionalLight(0xffffff, 0.5);
-  fill.position.set(-5, 2, -3);
-  const ambient = new THREE.AmbientLight(0xffffff, 1.0);
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
-    new THREE.ShadowMaterial({ opacity: 0.15 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(key, fill, ambient, ground);
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+  key.shadow.camera.left = -8; key.shadow.camera.right = 8;
+  key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
+  key.shadow.bias = -0.0008;
+  key.shadow.radius = 3;
 
-  const ctl = { theta: 0.62, phi: 1.17, dist: 7, spin: false, scene: "studio" };
+  const rim = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+  rim.position.set(-6, 3.5, -4.5);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.22);
+  scene.add(key, rim, ambient);
+
+  /* A soft dark patch directly under the box. Shadow maps alone wash out on a
+     bright surface, and without this the package looks like it is hovering. */
+  const contactTexture = canvasTexture(256, 256, (ctx, w, h) => {
+    const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    g.addColorStop(0, "rgba(0,0,0,.55)");
+    g.addColorStop(0.3, "rgba(0,0,0,.26)");
+    g.addColorStop(0.62, "rgba(0,0,0,.07)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  });
+  const contact = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: contactTexture, transparent: true,
+                                  depthWrite: false })
+  );
+  contact.rotation.x = -Math.PI / 2;
+  contact.position.y = 0.004;
+  contact.renderOrder = 1;
+
+  /* An environment map gives the carton something to reflect, which is what
+     makes a varnished surface read as a surface instead of flat colour. */
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader?.();
+
+  function buildEnvironment(top, bottom, warm) {
+    const tex = canvasTexture(1024, 512, (ctx, w, h) => {
+      const sky = ctx.createLinearGradient(0, 0, 0, h);
+      sky.addColorStop(0, top);
+      sky.addColorStop(0.52, top);
+      sky.addColorStop(0.56, bottom);
+      sky.addColorStop(1, bottom);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+      // key softbox
+      const box = ctx.createRadialGradient(w * 0.3, h * 0.2, 10, w * 0.3, h * 0.2, w * 0.2);
+      box.addColorStop(0, warm ? "#fffaf0" : "#ffffff");
+      box.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = box; ctx.fillRect(0, 0, w, h * 0.6);
+      // soft fill opposite
+      const fill = ctx.createRadialGradient(w * 0.76, h * 0.3, 10, w * 0.76, h * 0.3, w * 0.17);
+      fill.addColorStop(0, "rgba(255,255,255,.55)");
+      fill.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h * 0.7);
+    });
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const target = pmrem.fromEquirectangular(tex);
+    scene.environment = target.texture;
+    tex.dispose();
+  }
+
+  let backdrop = null, ground = null;
+
+  function buildStage(name) {
+    const [top, bottom] = BACKDROP[name] || BACKDROP.studio;
+    buildEnvironment(top, bottom, name === "wood" || name === "shelf");
+
+    if (backdrop) { scene.remove(backdrop); backdrop.geometry.dispose(); backdrop.material.dispose(); }
+    const sky = canvasTexture(16, 256, (ctx, w, h) => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, top); g.addColorStop(1, bottom);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    });
+    backdrop = new THREE.Mesh(
+      new THREE.SphereGeometry(60, 32, 24),
+      new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide })
+    );
+    scene.add(backdrop);
+
+    if (ground) { scene.remove(ground); ground.geometry.dispose(); ground.material.dispose(); }
+    const surface = canvasTexture(512, 512, SURFACE_ART[name] || SURFACE_ART.studio);
+    surface.wrapS = surface.wrapT = THREE.RepeatWrapping;
+    surface.repeat.set(name === "studio" ? 1 : 3, name === "studio" ? 1 : 3);
+    ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshStandardMaterial({
+        map: surface,
+        roughness: name === "marble" ? 0.3 : name === "dark" ? 0.55 : 0.8,
+        metalness: 0,
+        envMapIntensity: name === "marble" ? 0.7 : 0.3,
+      })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+  }
+
+  const ctl = { theta: 0.58, phi: 1.22, dist: 8.4, spin: false, surface: "studio" };
   let dragging = false, lastX = 0, lastY = 0;
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -466,8 +674,7 @@ function createThree(canvas) {
   canvas.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     ctl.theta -= (e.clientX - lastX) * 0.008;
-    ctl.phi = Math.max(0.18, Math.min(Math.PI - 0.18,
-                                      ctl.phi - (e.clientY - lastY) * 0.008));
+    ctl.phi = Math.max(0.3, Math.min(1.52, ctl.phi - (e.clientY - lastY) * 0.008));
     lastX = e.clientX; lastY = e.clientY;
   });
   const stop = () => { dragging = false; };
@@ -475,7 +682,7 @@ function createThree(canvas) {
   canvas.addEventListener("pointercancel", stop);
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    ctl.dist = Math.max(2.2, Math.min(22, ctl.dist * (1 + Math.sign(e.deltaY) * 0.1)));
+    ctl.dist = Math.max(3, Math.min(24, ctl.dist * (1 + Math.sign(e.deltaY) * 0.1)));
   }, { passive: false });
 
   const loader = new THREE.TextureLoader();
@@ -483,71 +690,60 @@ function createThree(canvas) {
   const tex = (url) => {
     if (cache.has(url)) return cache.get(url);
     const t = loader.load(url);
-    t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 4;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 8;
     if (THREE.sRGBEncoding !== undefined) t.encoding = THREE.sRGBEncoding;
     cache.set(url, t);
     return t;
   };
 
-  const face = (entry, fallback) => entry
-    ? new THREE.MeshStandardMaterial({ map: tex(entry.url), roughness: 0.72, metalness: 0.02 })
-    : new THREE.MeshStandardMaterial({ color: fallback, roughness: 0.78 });
+  /* Printed board: slightly rough, with a thin varnish on top. Clearcoat is
+     what gives the edge highlight you see on a real laminated carton. */
+  function face(entry, fallback) {
+    const Material = THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial;
+    const opts = {
+      roughness: 0.52, metalness: 0.0, envMapIntensity: 0.75,
+      clearcoat: 0.3, clearcoatRoughness: 0.42,
+    };
+    if (entry) opts.map = tex(entry.url); else opts.color = fallback;
+    return new Material(opts);
+  }
 
   function makeBox(textures, dims, scale) {
     const w = dims.width * scale, h = dims.height * scale, d = dims.depth * scale;
-    const side = "#d8d3cb";
+    const side = "#ded9d1";
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [
       face(textures.right, side), face(textures.left, side),
       face(textures.top, side), face(textures.bottom, side),
       face(textures.front, side), face(textures.back, side),
     ]);
     mesh.castShadow = true;
+    mesh.receiveShadow = true;
     mesh.position.y = h / 2;
     return mesh;
-  }
-
-  function applyScene(name) {
-    ctl.scene = name;
-    if (name === "dark") {
-      scene.background = new THREE.Color(0x14171d);
-      ambient.intensity = 0.3; key.intensity = 1.05; fill.intensity = 0.5;
-      ground.material.opacity = 0.3;
-    } else if (name === "shelf") {
-      scene.background = new THREE.Color(0xe4dace);
-      ambient.intensity = 0.95; key.intensity = 0.95; fill.intensity = 0.45;
-      ground.material.opacity = 0.2;
-    } else {
-      scene.background = new THREE.Color(0xe9e6df);
-      ambient.intensity = 1.0; key.intensity = 0.95; fill.intensity = 0.5;
-      ground.material.opacity = 0.14;
-    }
   }
 
   let current = null;
   function build(data) {
     while (root.children.length) root.remove(root.children[0]);
     const biggest = Math.max(data.dims.width, data.dims.height, data.dims.depth);
-    const scale = 2.4 / biggest;
+    const scale = 2.6 / biggest;
     current = data;
     root.add(makeBox(data.textures, data.dims, scale));
 
-    if (ctl.scene === "shelf") {
-      const gap = data.dims.width * scale * 1.22;
+    const footprint = Math.max(data.dims.width, data.dims.depth) * scale;
+    contact.scale.set(footprint * 2.1, footprint * 2.1, 1);
+    root.add(contact);
+
+    if (ctl.surface === "shelf") {
+      const gap = data.dims.width * scale * 1.25;
       for (const offset of [-gap, gap]) {
         const clone = makeBox(data.textures, data.dims, scale);
         clone.position.x = offset;
-        clone.rotation.y = offset < 0 ? 0.09 : -0.09;
+        clone.rotation.y = offset < 0 ? 0.1 : -0.1;
         root.add(clone);
       }
-      const plank = new THREE.Mesh(
-        new THREE.BoxGeometry(gap * 5, 0.09, data.dims.depth * scale * 3),
-        new THREE.MeshStandardMaterial({ color: 0xc9b89d, roughness: 0.9 })
-      );
-      plank.position.y = -0.045;
-      plank.receiveShadow = true;
-      root.add(plank);
     }
-    applyScene(ctl.scene);
+    buildStage(ctl.surface);
     resize();
   }
 
@@ -560,25 +756,101 @@ function createThree(canvas) {
   }
   new ResizeObserver(resize).observe(canvas.parentElement);
 
+  buildStage("studio");
+
   (function loop() {
     requestAnimationFrame(loop);
-    if (ctl.spin) ctl.theta += 0.004;
+    if (ctl.spin) ctl.theta += 0.0035;
     const r = ctl.dist;
     camera.position.set(
       r * Math.sin(ctl.phi) * Math.sin(ctl.theta),
-      r * Math.cos(ctl.phi) + 1.1,
+      r * Math.cos(ctl.phi) + 1.2,
       r * Math.sin(ctl.phi) * Math.cos(ctl.theta)
     );
-    camera.lookAt(0, 1.05, 0);
+    camera.lookAt(0, 1.15, 0);
     renderer.render(scene, camera);
   })();
 
   return {
     build,
-    setScene: (n) => { applyScene(n); if (current) build(current); },
+    setSurface: (name) => { ctl.surface = name; if (current) build(current); else buildStage(name); },
     toggleSpin: () => (ctl.spin = !ctl.spin),
     snapshot: () => renderer.domElement.toDataURL("image/png"),
+    ready: () => Boolean(current),
   };
+}
+
+/* photos --------------------------------------------------------------- */
+
+function paintScenes() {
+  const wrap = $("sceneCards");
+  wrap.innerHTML = "";
+  for (const scene of state.scenes || []) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "scene" + (scene.id === state.scene ? " on" : "");
+    btn.innerHTML = `<b>${scene.label}</b><span>${scene.blurb}</span>`;
+    btn.onclick = () => { state.scene = scene.id; paintScenes(); };
+    wrap.appendChild(btn);
+  }
+  const intro = $("photoIntro");
+  if (state.config.image_provider === "none") {
+    intro.innerHTML = "This needs an image model, because Claude cannot make " +
+      "photographs. Add a Google Gemini key under <b>Settings</b> and this tab " +
+      "will put your package into real settings — held in a hand, on a marble " +
+      "counter, on a shelf.";
+  }
+}
+
+function paintGallery() {
+  const gallery = $("gallery");
+  const photos = (state.project?.assets || []).filter((a) => a.role === "photo");
+  gallery.innerHTML = "";
+  for (const photo of photos.slice().reverse()) {
+    const card = document.createElement("div");
+    card.className = "shot-card";
+    const url = `/api/projects/${state.projectId}/assets/${photo.id}`;
+    card.innerHTML = `<img src="${url}" alt="${photo.scene || "photo"}" loading="lazy">`;
+    const link = document.createElement("a");
+    link.href = url; link.download = photo.name || "photo.png"; link.textContent = "Save";
+    card.appendChild(link);
+    gallery.appendChild(card);
+  }
+}
+
+async function shoot() {
+  if (!state.projectId) return;
+  if (!hasStructure()) { toast("Design something first.", true); return; }
+  const status = $("photoStatus");
+
+  // The render is the input, so the 3D view has to have run at least once.
+  if (!state.three || !state.three.ready()) {
+    status.textContent = "Preparing the render…";
+    await loadThree();
+    await new Promise((r) => setTimeout(r, 1400));
+  }
+  const render = state.three?.snapshot();
+  if (!render) { toast("Could not capture the render.", true); return; }
+
+  const button = $("shoot");
+  button.disabled = true; button.textContent = "Shooting";
+  status.textContent = "Building the scene. This takes a few seconds.";
+  try {
+    await api(`/api/projects/${state.projectId}/photoshoot`, {
+      method: "POST",
+      body: JSON.stringify({
+        render, scene: state.scene,
+        notes: $("photoNotes").value, aspect: $("photoAspect").value,
+      }),
+    });
+    await openProject(state.projectId);
+    status.textContent = "Done. Shoot again for another take — results vary.";
+  } catch (err) {
+    status.textContent = "";
+    toast(err.message, true);
+  } finally {
+    button.disabled = false; button.textContent = "Shoot";
+  }
 }
 
 /* sending ------------------------------------------------------------- */
@@ -776,7 +1048,35 @@ function wire() {
     finally { e.target.disabled = false; e.target.textContent = "Generate files"; }
   });
 
-  $("sceneSelect").addEventListener("change", (e) => state.three?.setScene(e.target.value));
+  $("shoot").addEventListener("click", shoot);
+  $("photoNotes").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); shoot(); }
+  });
+  $("toPhoto").addEventListener("click", () => {
+    document.querySelector('.seg[data-view="photo"]').click();
+    if ((state.scenes || []).some((s) => s.id === state.surface)) {
+      state.scene = state.surface;
+      paintScenes();
+    }
+    shoot();
+  });
+
+  $("probeBtn").addEventListener("click", async (e) => {
+    const out = $("probeResult");
+    e.target.disabled = true;
+    out.textContent = "Checking…";
+    try {
+      const data = await api("/api/settings/probe", { method: "POST" });
+      state.config = data.config || state.config;
+      out.textContent = data.message || (data.ok ? "Connected." : "Not working.");
+      out.style.color = data.ok ? "var(--good)" : "var(--bad)";
+      paintScenes();
+    } catch (err) {
+      out.textContent = err.message;
+      out.style.color = "var(--bad)";
+    } finally { e.target.disabled = false; }
+  });
+
   $("spin").addEventListener("click", (e) => {
     e.target.textContent = state.three?.toggleSpin() ? "Stop" : "Spin";
   });

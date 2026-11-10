@@ -71,6 +71,7 @@
         <button class="seg on" data-view="flat" role="tab">Flat</button>
         <button class="seg" data-view="dieline" role="tab">Dieline</button>
         <button class="seg" data-view="three" role="tab">3D</button>
+        <button class="seg" data-view="photo" role="tab">Photos</button>
         <button class="seg" data-view="panels" role="tab">Faces</button>
         <button class="seg" data-view="export" role="tab">Export</button>
       </div>
@@ -83,16 +84,38 @@
 
       <div id="view-three" class="view flush">
         <canvas id="three"></canvas>
+        <div class="scene-strip" id="sceneStrip"></div>
         <div class="scene-controls">
-          <select id="sceneSelect" aria-label="Scene">
-            <option value="studio">Studio</option>
-            <option value="shelf">Shelf</option>
-            <option value="dark">Dark</option>
-          </select>
           <button id="spin" class="btn quiet sm">Spin</button>
           <button id="shot" class="btn quiet sm">Save image</button>
+          <button id="toPhoto" class="btn primary sm">Make it a photo</button>
         </div>
         <p class="scene-hint">Drag to turn, scroll to zoom</p>
+      </div>
+
+      <div id="view-photo" class="view">
+        <div class="photo">
+          <div class="photo-lead">
+            <h3>Photos</h3>
+            <p id="photoIntro">Pick a setting. The 3D render is sent to your
+              image model, which builds a real scene around it and keeps the
+              package exactly as designed.</p>
+            <div class="scenes" id="sceneCards"></div>
+            <div class="photo-run">
+              <input id="photoNotes" type="text"
+                     placeholder="Anything to add? e.g. a woman's hand, warm skin, gold ring">
+              <select id="photoAspect" aria-label="Shape">
+                <option value="1:1">Square</option>
+                <option value="4:3">Landscape</option>
+                <option value="3:4">Portrait</option>
+                <option value="9:16">Story</option>
+              </select>
+              <button id="shoot" class="btn primary">Shoot</button>
+            </div>
+            <p class="note" id="photoStatus"></p>
+          </div>
+          <div class="gallery" id="gallery"></div>
+        </div>
       </div>
 
       <div id="view-panels" class="view"><div class="faces" id="faceGrid"></div></div>
@@ -177,17 +200,30 @@
     </label>
     <p class="note" id="priceNote"></p>
 
+    <div class="split"></div>
+
+    <label class="field" for="geminiKey">
+      <span>Google Gemini key
+        <button type="button" class="clear" data-clear="GEMINI_API_KEY">Remove</button></span>
+      <input id="geminiKey" type="password" placeholder="paste your key"
+             autocomplete="off" spellcheck="false">
+    </label>
+    <p class="note">Needed for the Photos tab: it puts your package into real
+       settings — held in a hand, on a marble counter, on a shelf. Claude cannot
+       make photographs. Free tier available at aistudio.google.com.</p>
+
+    <div class="probe-row">
+      <button type="button" id="probeBtn" class="btn">Test connection</button>
+      <span id="probeResult" class="note" style="margin:0"></span>
+    </div>
+
     <details class="extra">
-      <summary>Image generation, optional</summary>
-      <p class="note">Claude does not generate pixel images. The studio works in
-         vectors, which is the better answer for print. Add a key here if you also
-         want photographic motifs.</p>
-      <label class="field" for="geminiKey">
-        <span>Google Gemini <button type="button" class="clear" data-clear="GEMINI_API_KEY">Remove</button></span>
-        <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
-      </label>
+      <summary>Use OpenAI instead</summary>
+      <p class="note">Works for generating motifs, but not for the Photos tab —
+         that needs a model which edits the render rather than inventing a new box.</p>
       <label class="field" for="openaiKey">
-        <span>OpenAI <button type="button" class="clear" data-clear="OPENAI_API_KEY">Remove</button></span>
+        <span>OpenAI key
+          <button type="button" class="clear" data-clear="OPENAI_API_KEY">Remove</button></span>
         <input id="openaiKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false">
       </label>
     </details>

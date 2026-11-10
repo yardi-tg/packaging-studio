@@ -1,7 +1,10 @@
 # Packaging Studio
 
 Design printable packaging by talking to Claude. Runs entirely on your own
-machine, on your own API key. No account, no subscription, no credits.
+machine, on your own API keys. No account, no subscription, no credits.
+
+You need two keys: **Anthropic** for the design work, and **Google Gemini** for
+the photos. Both have a free tier to start with.
 
 ![The flat layout with the dieline on top](docs/screenshot-flat.png)
 
@@ -40,8 +43,10 @@ out whether text overflows its panel, whether two blocks collide, and whether
 anything sits too close to a cut line. The findings go back to the agent, which
 has to fix them before it can tell you the design is finished.
 
-The trade: no photographic imagery, because Claude does not generate pixels.
-If you want that too, see [Image generation](#image-generation-optional).
+Claude does not generate pixels, so the photography comes from a second model.
+That turns out to be the better division of labour: the box is built correctly
+as vectors, and the image model only has to light it and put it somewhere real.
+See [Photos](#photos).
 
 ---
 
@@ -86,6 +91,13 @@ keeps a sum. No surprises at the end of the month.
 
 ---
 
+**Photos.** The 3D render goes to Gemini, which builds a real scene around it
+and keeps the package exactly as designed: held in a hand, on a marble bathroom
+counter, on a wooden table in afternoon light, on a retail shelf, flat lay,
+studio seamless, outdoors, or dark and moody. Shoot again for another take.
+
+---
+
 ## Getting started
 
 ```bash
@@ -97,9 +109,16 @@ python3 server.py
 On macOS you can also just double-click `start.command`. The first time,
 right-click it and choose *Open* so Gatekeeper lets it through.
 
-The browser opens on `http://localhost:8777`. Paste an Anthropic API key from
-[console.anthropic.com](https://console.anthropic.com) under **Settings**. It is
-written to a `.env` file next to the program and only ever sent to Anthropic.
+The browser opens on `http://localhost:8777`. Under **Settings**, paste:
+
+1. An **Anthropic** key from [console.anthropic.com](https://console.anthropic.com).
+   This drives everything: the conversation, the structure, the copy, the artwork.
+2. A **Google Gemini** key from [aistudio.google.com](https://aistudio.google.com).
+   This drives the Photos tab. Press **Test connection** and the app finds the
+   best image model your account can reach and remembers it.
+
+Both are written to a `.env` file next to the program, which is gitignored, and
+are only ever sent to the provider they belong to.
 
 A bundled example project is there so you can click around and export files
 without spending anything.
@@ -118,16 +137,33 @@ somewhere between a few cents and a couple of dollars.
 
 ---
 
-## Image generation, optional
+## Photos
 
-Claude does not produce pixel images. Add a key under **Settings → Image
-generation** and the agent gains a `generate_image` tool:
+The Photos tab takes the 3D render of your finished package and hands it to
+Gemini with an instruction to build a scene around it and leave the package
+alone. Because the model is editing a render rather than inventing a box, the
+proportions, artwork and lettering survive.
 
-- **Google Gemini** — [aistudio.google.com](https://aistudio.google.com), has a free tier
-- **OpenAI** — [platform.openai.com](https://platform.openai.com)
+Eight settings are built in, and there is a free-text box for anything else:
 
-Typography stays vector either way, so lettering stays sharp. Without a key
-everything else works exactly the same.
+| | |
+|---|---|
+| In hand | Held up close, natural skin and realistic fingers |
+| Marble counter | Bathroom, bright, linen and eucalyptus just out of focus |
+| Wooden table | Warm oak, low afternoon sun, long soft shadow |
+| Retail shelf | Eye level, blurred unbranded neighbours either side |
+| Studio seamless | Clean e-commerce cutout on a soft backdrop |
+| Flat lay | Overhead on linen with styled props |
+| Outdoors | Stone ledge in dappled shade |
+| Dark and moody | One hard light, deep shadow, rim highlight |
+
+**OpenAI** works too ([platform.openai.com](https://platform.openai.com)) but
+only for generating motifs, not for the Photos tab — that needs a model which
+edits an image rather than starting from scratch.
+
+Typography stays vector throughout, so lettering on the package never degrades.
+Without an image key everything else works exactly the same; only the Photos tab
+is unavailable.
 
 ---
 
@@ -168,7 +204,7 @@ core/
   layout.py            Overflow, collision and margin checks
   pdfwriter.py         Vector PDF writer
   fonts.py             Google Fonts embedded as data URIs
-  imagegen.py          Optional Gemini / OpenAI image providers
+  imagegen.py          Gemini / OpenAI: motifs and the photoshoot
   store.py             Projects as plain files on disk
 agents/
   packaging_designer.py
