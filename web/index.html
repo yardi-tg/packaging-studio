@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packaging Studio</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='5' y='4' width='22' height='24' rx='2' fill='none' stroke='%23c9a24e' stroke-width='2.5'/><path d='M5 11h22' stroke='%23c9a24e' stroke-width='2' stroke-dasharray='3 2.5'/></svg>">
+</head>
+<body>
+
+<header class="rail">
+  <div class="mark">
+    <svg width="17" height="19" viewBox="0 0 17 19" aria-hidden="true">
+      <rect x="1" y="1" width="15" height="17" rx="1.5" fill="none"
+            stroke="currentColor" stroke-width="1.5"/>
+      <path d="M1 6.5h15" stroke="currentColor" stroke-width="1.2"
+            stroke-dasharray="2.4 2"/>
+    </svg>
+    <span>Packaging Studio</span>
+  </div>
+
+  <div class="rail-project">
+    <select id="projectSelect" aria-label="Project"></select>
+    <button id="newProject" class="btn quiet">New</button>
+    <button id="deleteProject" class="btn quiet" title="Delete this project">Delete</button>
+  </div>
+
+  <div class="rail-meter" id="meter" hidden>
+    <span class="meter-value" id="meterCost">$0.00</span>
+    <span class="meter-label" id="meterLabel">spent on this project</span>
+  </div>
+
+  <button id="openSettings" class="btn quiet">
+    <span id="keyDot" class="dot"></span><span id="keyLabel">Settings</span>
+  </button>
+</header>
+
+<main class="frame">
+
+  <!-- conversation -------------------------------------------------- -->
+  <section class="col chat" aria-label="Conversation">
+    <div class="col-head">
+      <h2 id="agentTitle">Packaging designer</h2>
+      <button id="clearChat" class="btn quiet sm">Clear history</button>
+    </div>
+
+    <div id="messages" class="messages" role="log" aria-live="polite"></div>
+
+    <div id="attachStrip" class="attachments" hidden></div>
+
+    <form id="composer" class="composer">
+      <label for="fileInput" class="clip" title="Attach a reference image">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+          <path d="M20 11.5V7a3.6 3.6 0 0 0-7.2 0v9.2a2.2 2.2 0 0 0 4.4 0V9"
+                fill="none" stroke="currentColor" stroke-width="1.7"
+                stroke-linecap="round"/>
+        </svg>
+        <span class="sr-only">Attach image</span>
+      </label>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      <textarea id="input" rows="1" placeholder="Describe your product…"></textarea>
+      <button id="send" class="btn primary" type="submit">Send</button>
+    </form>
+  </section>
+
+  <!-- stage ---------------------------------------------------------- -->
+  <section class="col stage-col" aria-label="Preview">
+    <div class="col-head stage-head">
+      <div class="segmented" role="tablist">
+        <button class="seg on" data-view="flat" role="tab">Flat</button>
+        <button class="seg" data-view="dieline" role="tab">Dieline</button>
+        <button class="seg" data-view="three" role="tab">3D</button>
+        <button class="seg" data-view="panels" role="tab">Faces</button>
+        <button class="seg" data-view="export" role="tab">Export</button>
+      </div>
+      <button id="refresh" class="btn quiet sm">Reload</button>
+    </div>
+
+    <div class="stage" id="stage">
+      <div id="view-flat" class="view on"></div>
+      <div id="view-dieline" class="view"></div>
+
+      <div id="view-three" class="view flush">
+        <canvas id="three"></canvas>
+        <div class="scene-controls">
+          <select id="sceneSelect" aria-label="Scene">
+            <option value="studio">Studio</option>
+            <option value="shelf">Shelf</option>
+            <option value="dark">Dark</option>
+          </select>
+          <button id="spin" class="btn quiet sm">Spin</button>
+          <button id="shot" class="btn quiet sm">Save image</button>
+        </div>
+        <p class="scene-hint">Drag to turn, scroll to zoom</p>
+      </div>
+
+      <div id="view-panels" class="view"><div class="faces" id="faceGrid"></div></div>
+
+      <div id="view-export" class="view">
+        <div class="export">
+          <div class="export-lead">
+            <h3>Production files</h3>
+            <p>Writes the dieline, the artwork, each face on its own, and a
+               technical spec sheet into this project's folder.</p>
+            <button id="doExport" class="btn primary">Generate files</button>
+          </div>
+          <ul id="exportList" class="files"></ul>
+        </div>
+      </div>
+
+      <div id="emptyState" class="empty">
+        <svg width="132" height="96" viewBox="0 0 132 96" aria-hidden="true">
+          <g fill="none" stroke-linejoin="round">
+            <path d="M24 26 L24 70 M44 26 L44 70 M76 26 L76 70 M96 26 L96 70"
+                  stroke="#9fb4d6" stroke-width="1" stroke-dasharray="4 3"/>
+            <path d="M12 30 L24 26 L24 70 L12 66 Z
+                     M24 26 H44 V70 H24 Z M44 26 H76 V70 H44 Z
+                     M76 26 H96 V70 H76 Z M96 26 H116 V70 H96 Z"
+                  stroke="#d2607a" stroke-width="1.3"/>
+            <path d="M44 26 Q46 12 60 12 Q74 12 76 26" stroke="#d2607a" stroke-width="1.3"/>
+            <path d="M44 70 Q46 84 60 84 Q74 84 76 70" stroke="#d2607a" stroke-width="1.3"/>
+          </g>
+        </svg>
+        <h3>No structure yet</h3>
+        <p>Tell the designer about your product. Once the style and dimensions
+           are settled, the preview appears here.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- inspector ------------------------------------------------------ -->
+  <aside class="col inspector" aria-label="Structure and layers">
+    <section class="block">
+      <h3>Structure</h3>
+      <label class="field" for="boxType">
+        <span>Style</span>
+        <select id="boxType"></select>
+      </label>
+      <div class="triple">
+        <label class="field"><span>Width</span><input id="dimW" type="number" min="5" step="1"></label>
+        <label class="field"><span>Depth</span><input id="dimD" type="number" min="5" step="1"></label>
+        <label class="field"><span>Height</span><input id="dimH" type="number" min="5" step="1"></label>
+      </div>
+      <p class="note" id="structureNote">Millimetres, inside dimensions.</p>
+      <button id="applyStructure" class="btn wide">Apply</button>
+    </section>
+
+    <section class="block grow">
+      <h3>Layers <span id="layerCount" class="tally"></span></h3>
+      <div id="layerList" class="layers"></div>
+    </section>
+
+    <section class="block">
+      <h3>Reference images</h3>
+      <div id="assetList" class="thumbs"></div>
+    </section>
+  </aside>
+</main>
+
+<!-- settings --------------------------------------------------------- -->
+<dialog id="settings" class="sheet">
+  <form method="dialog" class="sheet-body">
+    <h2>Settings</h2>
+
+    <label class="field" for="anthropicKey">
+      <span>Anthropic API key <em id="anthropicState"></em></span>
+      <input id="anthropicKey" type="password" placeholder="sk-ant-…"
+             autocomplete="off" spellcheck="false">
+    </label>
+    <p class="note">From console.anthropic.com. It is written to the
+       <code>.env</code> file next to the program and only ever sent to Anthropic.</p>
+
+    <label class="field" for="modelSelect">
+      <span>Model</span>
+      <select id="modelSelect"></select>
+    </label>
+    <p class="note" id="priceNote"></p>
+
+    <details class="extra">
+      <summary>Image generation, optional</summary>
+      <p class="note">Claude does not generate pixel images. The studio works in
+         vectors, which is the better answer for print. Add a key here if you also
+         want photographic motifs.</p>
+      <label class="field" for="geminiKey">
+        <span>Google Gemini <button type="button" class="clear" data-clear="GEMINI_API_KEY">Remove</button></span>
+        <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field" for="openaiKey">
+        <span>OpenAI <button type="button" class="clear" data-clear="OPENAI_API_KEY">Remove</button></span>
+        <input id="openaiKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false">
+      </label>
+    </details>
+
+    <div class="sheet-actions">
+      <button value="cancel" class="btn quiet">Cancel</button>
+      <button id="saveSettings" value="save" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

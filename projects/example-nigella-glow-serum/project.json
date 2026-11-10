@@ -1,0 +1,809 @@
+{
+  "id": "example-nigella-glow-serum",
+  "name": "Example: Nigella Glow Serum",
+  "agent": "packaging_designer",
+  "created": "2026-11-10T02:09:14",
+  "updated": "2026-11-10T02:14:26",
+  "brief": {
+    "product_name": "Nigella Glow Serum",
+    "brand": "Habesha Botanics",
+    "category": "Face serum",
+    "volume": "30 ml",
+    "market": "Ethiopia",
+    "languages": [
+      "English",
+      "Amharic"
+    ],
+    "positioning": "Quiet premium. Locally sourced oils, restrained design.",
+    "color_mode": "CMYK 4/0",
+    "finish": "Matt lamination, gold hot foil on the seal"
+  },
+  "dieline": {
+    "box_type": "ste",
+    "box_name": "Folding carton, straight tuck end",
+    "box_short": "Straight Tuck End (STE)",
+    "dims": {
+      "width": 50.0,
+      "depth": 40.0,
+      "height": 120.0
+    },
+    "bleed": 3.0,
+    "sheet": {
+      "width": 221.2,
+      "height": 225.0
+    },
+    "cut": [
+      [
+        [
+          27.2,
+          52.5
+        ],
+        [
+          14.0,
+          55.5
+        ],
+        [
+          14.0,
+          169.5
+        ],
+        [
+          27.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          207.2,
+          52.5
+        ],
+        [
+          207.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          27.2,
+          52.5
+        ],
+        [
+          29.7,
+          20.0
+        ],
+        [
+          32.7,
+          14.0
+        ],
+        [
+          71.7,
+          14.0
+        ],
+        [
+          74.7,
+          20.0
+        ],
+        [
+          77.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          77.2,
+          52.5
+        ],
+        [
+          77.2,
+          19.0
+        ],
+        [
+          80.7,
+          15.5
+        ],
+        [
+          113.7,
+          15.5
+        ],
+        [
+          117.2,
+          19.0
+        ],
+        [
+          117.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          167.2,
+          52.5
+        ],
+        [
+          167.2,
+          19.0
+        ],
+        [
+          170.7,
+          15.5
+        ],
+        [
+          203.7,
+          15.5
+        ],
+        [
+          207.2,
+          19.0
+        ],
+        [
+          207.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          117.2,
+          52.5
+        ],
+        [
+          167.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          27.2,
+          172.5
+        ],
+        [
+          29.7,
+          205.0
+        ],
+        [
+          32.7,
+          211.0
+        ],
+        [
+          71.7,
+          211.0
+        ],
+        [
+          74.7,
+          205.0
+        ],
+        [
+          77.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          77.2,
+          172.5
+        ],
+        [
+          77.2,
+          206.0
+        ],
+        [
+          80.7,
+          209.5
+        ],
+        [
+          113.7,
+          209.5
+        ],
+        [
+          117.2,
+          206.0
+        ],
+        [
+          117.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          167.2,
+          172.5
+        ],
+        [
+          167.2,
+          206.0
+        ],
+        [
+          170.7,
+          209.5
+        ],
+        [
+          203.7,
+          209.5
+        ],
+        [
+          207.2,
+          206.0
+        ],
+        [
+          207.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          117.2,
+          172.5
+        ],
+        [
+          167.2,
+          172.5
+        ]
+      ]
+    ],
+    "fold": [
+      [
+        [
+          27.2,
+          52.5
+        ],
+        [
+          27.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          77.2,
+          52.5
+        ],
+        [
+          77.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          117.2,
+          52.5
+        ],
+        [
+          117.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          167.2,
+          52.5
+        ],
+        [
+          167.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          27.2,
+          52.5
+        ],
+        [
+          77.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          77.2,
+          52.5
+        ],
+        [
+          117.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          167.2,
+          52.5
+        ],
+        [
+          207.2,
+          52.5
+        ]
+      ],
+      [
+        [
+          27.2,
+          172.5
+        ],
+        [
+          77.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          77.2,
+          172.5
+        ],
+        [
+          117.2,
+          172.5
+        ]
+      ],
+      [
+        [
+          167.2,
+          172.5
+        ],
+        [
+          207.2,
+          172.5
+        ]
+      ]
+    ],
+    "panels": [
+      {
+        "id": "back",
+        "label": "Back",
+        "x": 27.2,
+        "y": 52.5,
+        "w": 50.0,
+        "h": 120.0,
+        "face": "back",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "left",
+        "label": "Left side",
+        "x": 77.2,
+        "y": 52.5,
+        "w": 40.0,
+        "h": 120.0,
+        "face": "left",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "front",
+        "label": "Front",
+        "x": 117.2,
+        "y": 52.5,
+        "w": 50.0,
+        "h": 120.0,
+        "face": "front",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "right",
+        "label": "Right side",
+        "x": 167.2,
+        "y": 52.5,
+        "w": 40.0,
+        "h": 120.0,
+        "face": "right",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "top",
+        "label": "Top (tuck)",
+        "x": 27.2,
+        "y": 14.0,
+        "w": 50.0,
+        "h": 38.5,
+        "face": "top",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "bottom",
+        "label": "Bottom (tuck)",
+        "x": 27.2,
+        "y": 172.5,
+        "w": 50.0,
+        "h": 38.5,
+        "face": "bottom",
+        "rotate": 0,
+        "printable": true
+      },
+      {
+        "id": "glue",
+        "label": "Glue flap",
+        "x": 14.0,
+        "y": 52.5,
+        "w": 13.2,
+        "h": 120.0,
+        "face": "glue",
+        "rotate": 0,
+        "printable": false
+      }
+    ],
+    "notes": [
+      "Glue flap 13.2 mm, glues behind the right side wall.",
+      "Tuck flaps 38.5 mm, dust flaps 37.0 mm.",
+      "Both tucks run in the same direction."
+    ],
+    "material_hint": "Folding boxboard GC1, 350-400 gsm."
+  },
+  "artwork": {
+    "concept": "Dark green, botanical, quiet. One gold accent.",
+    "palette": {
+      "bg": "#0d3b32",
+      "deep": "#0a2b25",
+      "gold": "#d8b068",
+      "cream": "#f4efe3"
+    },
+    "fonts": {
+      "display": "cormorant",
+      "body": "jost",
+      "mono": "ibmmono"
+    },
+    "panels": {
+      "front": {
+        "background": {
+          "type": "linear",
+          "angle": 110,
+          "stops": [
+            "#0d3b32",
+            "#0a2b25"
+          ]
+        },
+        "layers": [
+          {
+            "type": "pattern",
+            "name": "Botanical pattern",
+            "x": 0,
+            "y": 0,
+            "w": 50,
+            "h": 120,
+            "motif": "leaves",
+            "tile": 9,
+            "color": "#1b5a4c",
+            "opacity": 0.5,
+            "patternRotate": 18,
+            "id": "front-1-deb9",
+            "visible": true
+          },
+          {
+            "type": "rect",
+            "name": "Light field",
+            "x": 0,
+            "y": 52,
+            "w": 50,
+            "h": 46,
+            "fill": {
+              "type": "radial",
+              "cx": 50,
+              "cy": 45,
+              "r": 85,
+              "stops": [
+                {
+                  "color": "#1f7a65",
+                  "opacity": 0.55
+                },
+                {
+                  "color": "#0d3b32",
+                  "opacity": 0
+                }
+              ]
+            },
+            "id": "front-2-8c0d",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Brand",
+            "text": "HABESHA BOTANICS",
+            "x": 8,
+            "y": 9,
+            "w": 34,
+            "font": "display",
+            "size": 3.3,
+            "weight": 500,
+            "fill": "#e9e2d2",
+            "align": "center",
+            "letterSpacing": 0.55,
+            "transform": "uppercase",
+            "id": "front-3-afd2",
+            "visible": true
+          },
+          {
+            "type": "line",
+            "name": "Hairline",
+            "x": 8,
+            "y": 17,
+            "w": 34,
+            "h": 0,
+            "stroke": "#d8b068",
+            "strokeWidth": 0.3,
+            "id": "front-4-a4b6",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Product name",
+            "text": "Nigella\nGlow Serum",
+            "x": 7,
+            "y": 56,
+            "w": 36,
+            "font": "display",
+            "size": 6.2,
+            "weight": 400,
+            "fill": "#f4efe3",
+            "align": "center",
+            "lineHeight": 1.12,
+            "id": "front-5-46cf",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Descriptor",
+            "text": "Black seed & honey",
+            "x": 7,
+            "y": 82.5,
+            "w": 36,
+            "font": "body",
+            "size": 2.5,
+            "fill": "#a9c7bb",
+            "align": "center",
+            "letterSpacing": 0.3,
+            "id": "front-6-7ed8",
+            "visible": true
+          },
+          {
+            "type": "ellipse",
+            "name": "Seal",
+            "x": 19,
+            "y": 90,
+            "w": 12,
+            "h": 12,
+            "fill": "none",
+            "stroke": "#d8b068",
+            "strokeWidth": 0.35,
+            "id": "front-7-a119",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Seal text",
+            "text": "30 ml",
+            "x": 19,
+            "y": 93.6,
+            "w": 12,
+            "font": "body",
+            "size": 2.6,
+            "weight": 600,
+            "fill": "#d8b068",
+            "align": "center",
+            "id": "front-8-00a6",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Footline",
+            "text": "COLD PRESSED · ETHIOPIA",
+            "x": 6,
+            "y": 108,
+            "w": 38,
+            "font": "body",
+            "size": 1.9,
+            "weight": 500,
+            "fill": "#7fa396",
+            "align": "center",
+            "letterSpacing": 0.4,
+            "id": "front-9-4bac",
+            "visible": true
+          }
+        ]
+      },
+      "back": {
+        "background": "#0d3b32",
+        "layers": [
+          {
+            "type": "text",
+            "name": "Back headline",
+            "text": "Light daily care",
+            "x": 7,
+            "y": 14,
+            "w": 36,
+            "font": "display",
+            "size": 4.2,
+            "fill": "#f4efe3",
+            "id": "back-1-4a62",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Description",
+            "text": "A light serum built on cold-pressed black seed oil from the highlands and Ethiopian forest honey. Sinks in quickly and leaves skin soft and calm.",
+            "x": 7,
+            "y": 24,
+            "w": 36,
+            "font": "body",
+            "size": 2.2,
+            "fill": "#bcd4c9",
+            "lineHeight": 1.5,
+            "id": "back-2-14d0",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Directions title",
+            "text": "HOW TO USE",
+            "x": 7,
+            "y": 48,
+            "w": 36,
+            "font": "body",
+            "size": 2.0,
+            "weight": 700,
+            "fill": "#d8b068",
+            "letterSpacing": 0.35,
+            "id": "back-3-7449",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Directions",
+            "text": "Morning and night, press two or three drops into clean skin.",
+            "x": 7,
+            "y": 52,
+            "w": 36,
+            "font": "body",
+            "size": 2.1,
+            "fill": "#bcd4c9",
+            "lineHeight": 1.45,
+            "id": "back-4-db5d",
+            "visible": true
+          },
+          {
+            "type": "rect",
+            "name": "Barcode area",
+            "x": 7,
+            "y": 92,
+            "w": 36,
+            "h": 22,
+            "fill": "#f4efe3",
+            "rx": 1,
+            "id": "back-5-b0e8",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Barcode note",
+            "text": "EAN-13 goes here",
+            "x": 7,
+            "y": 101,
+            "w": 36,
+            "font": "body",
+            "size": 2.0,
+            "fill": "#8a9a93",
+            "align": "center",
+            "id": "back-6-09cf",
+            "visible": true
+          }
+        ]
+      },
+      "left": {
+        "background": "#0d3b32",
+        "layers": [
+          {
+            "type": "text",
+            "name": "INCI title",
+            "text": "INGREDIENTS / INCI",
+            "x": 5,
+            "y": 12,
+            "w": 30,
+            "font": "mono",
+            "size": 1.8,
+            "weight": 600,
+            "fill": "#d8b068",
+            "letterSpacing": 0.2,
+            "id": "left-1-3acd",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "INCI",
+            "text": "Simmondsia Chinensis Seed Oil, Nigella Sativa Seed Oil, Mel, Tocopherol, Helianthus Annuus Seed Oil, Parfum (Natural), Linalool.",
+            "x": 5,
+            "y": 17,
+            "w": 30,
+            "font": "mono",
+            "size": 1.6,
+            "fill": "#a9c7bb",
+            "lineHeight": 1.45,
+            "id": "left-2-262f",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Warning",
+            "text": "For external use only. Avoid contact with eyes. Store cool and dry.",
+            "x": 5,
+            "y": 86,
+            "w": 30,
+            "font": "body",
+            "size": 1.6,
+            "fill": "#7fa396",
+            "lineHeight": 1.4,
+            "id": "left-3-eac5",
+            "visible": true
+          }
+        ]
+      },
+      "right": {
+        "background": "#0d3b32",
+        "layers": [
+          {
+            "type": "text",
+            "name": "Responsible person",
+            "text": "Made in Ethiopia\nHabesha Botanics PLC\nAddis Ababa",
+            "x": 5,
+            "y": 12,
+            "w": 30,
+            "font": "body",
+            "size": 1.8,
+            "fill": "#a9c7bb",
+            "lineHeight": 1.5,
+            "id": "right-1-5e07",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Batch",
+            "text": "LOT:\nEXP:",
+            "x": 5,
+            "y": 96,
+            "w": 30,
+            "font": "mono",
+            "size": 1.8,
+            "fill": "#7fa396",
+            "lineHeight": 1.6,
+            "id": "right-2-8684",
+            "visible": true
+          }
+        ]
+      },
+      "top": {
+        "background": "#0a2b25",
+        "layers": [
+          {
+            "type": "text",
+            "name": "Lid",
+            "text": "HABESHA",
+            "x": 4,
+            "y": 14,
+            "w": 42,
+            "font": "display",
+            "size": 3.0,
+            "fill": "#d8b068",
+            "align": "center",
+            "letterSpacing": 0.6,
+            "id": "top-1-a6cb",
+            "visible": true
+          }
+        ]
+      },
+      "bottom": {
+        "background": "#0a2b25",
+        "layers": []
+      }
+    }
+  },
+  "assets": [],
+  "messages": [],
+  "copy": {
+    "descriptor": "Black seed & honey",
+    "net_content": "30 ml",
+    "origin": "Made in Ethiopia"
+  },
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cached_tokens": 0,
+    "cost_usd": 0.0,
+    "runs": 0
+  },
+  "log": []
+}

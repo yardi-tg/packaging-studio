@@ -1,0 +1,29 @@
+# Your API keys. Never commit this.
+.env
+
+# Cached webfonts, downloaded on first use
+fonts/
+
+# Your own projects stay local. The bundled example is the exception.
+projects/*
+!projects/example-nigella-glow-serum/
+projects/example-nigella-glow-serum/exports/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Packaged archives
+*.zip
