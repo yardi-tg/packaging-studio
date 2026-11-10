@@ -14,13 +14,16 @@ const api = async (path, opts = {}) => {
 };
 
 const state = {
-  config: {}, agents: [], boxTypes: {}, models: [], scenes: [],
+  config: {}, agents: [], boxTypes: {}, models: [], scenes: [], pricing: {},
   projectId: null, project: null,
   pending: [], view: "flat", busy: false, three: null,
-  surface: "studio", scene: "studio",
+  surface: "studio", scene: "studio", editing: null,
 };
 
-/* money ------------------------------------------------------------- */
+/* small helpers ------------------------------------------------------ */
+
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function money(usd) {
   const n = Number(usd) || 0;
@@ -35,7 +38,42 @@ function tokens(n) {
   return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
 }
 
-/* toast -------------------------------------------------------------- */
+/* A deliberately small Markdown subset: paragraphs, lists, bold, italic,
+   code, headings. Escaped first, so nothing the model writes becomes markup. */
+function inlineMd(s) {
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+}
+
+function markdown(src) {
+  const lines = escapeHtml(src).split("\n");
+  let html = "", list = null, para = [];
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  const closePara = () => { if (para.length) { html += `<p>${inlineMd(para.join("<br>"))}</p>`; para = []; } };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    let m;
+    if (!line.trim()) { closePara(); closeList(); continue; }
+    if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) {
+      closePara();
+      if (list !== "ul") { closeList(); html += "<ul>"; list = "ul"; }
+      html += `<li>${inlineMd(m[1])}</li>`; continue;
+    }
+    if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+      closePara();
+      if (list !== "ol") { closeList(); html += "<ol>"; list = "ol"; }
+      html += `<li>${inlineMd(m[1])}</li>`; continue;
+    }
+    if ((m = line.match(/^#{1,4}\s+(.*)$/))) {
+      closePara(); closeList(); html += `<h4>${inlineMd(m[1])}</h4>`; continue;
+    }
+    closeList(); para.push(line);
+  }
+  closePara(); closeList();
+  return html;
+}
 
 let toastTimer;
 function toast(message, bad = false) {
@@ -47,15 +85,22 @@ function toast(message, bad = false) {
   toastTimer = setTimeout(() => { el.hidden = true; }, bad ? 6500 : 3200);
 }
 
-/* boot --------------------------------------------------------------- */
+function readFile(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+/* boot ---------------------------------------------------------------- */
 
 async function boot() {
   try {
     const status = await api("/api/status");
     Object.assign(state, {
-      config: status.config, agents: status.agents,
-      boxTypes: status.box_types, models: status.models,
-      scenes: status.scenes || [], pricing: status.pricing || {},
+      config: status.config, agents: status.agents, boxTypes: status.box_types,
+      models: status.models, scenes: status.scenes || [], pricing: status.pricing || {},
     });
     fillBoxTypes();
     fillModels();
@@ -71,8 +116,7 @@ async function boot() {
 }
 
 function paintKeyState() {
-  const dot = $("keyDot");
-  const label = $("keyLabel");
+  const dot = $("keyDot"), label = $("keyLabel");
   if (state.config.anthropic) {
     dot.className = "dot ok";
     label.textContent = state.config.model_label || "Settings";
@@ -80,8 +124,8 @@ function paintKeyState() {
     dot.className = "dot bad";
     label.textContent = "Add API key";
   }
-  const state_ = $("anthropicState");
-  if (state_) state_.textContent = state.config.anthropic ? "saved" : "";
+  $("anthropicState").textContent = state.config.anthropic ? "saved" : "";
+  $("geminiState").textContent = state.config.image_provider === "gemini" ? "saved" : "";
 }
 
 function fillBoxTypes() {
@@ -108,17 +152,20 @@ function fillModels() {
   sel.addEventListener("change", paintPrice);
 }
 
-function paintPrice() {
-  const id = $("modelSelect").value;
-  const m = state.models.find((x) => x.id === id);
-  const p = (state.pricing || {})[Object.keys(state.pricing || {})
-    .find((k) => id.startsWith(k))] || null;
-  $("priceNote").textContent = p
-    ? `$${p.input.toFixed(2)} per million input tokens, $${p.output.toFixed(2)} per million output. A full design with a few rounds of edits usually lands between a few cents and a couple of dollars.`
-    : (m ? m.note : "");
+function priceFor(id) {
+  const keys = Object.keys(state.pricing || {}).sort((a, b) => b.length - a.length);
+  const key = keys.find((k) => id.startsWith(k));
+  return key ? state.pricing[key] : null;
 }
 
-/* projects ----------------------------------------------------------- */
+function paintPrice() {
+  const p = priceFor($("modelSelect").value);
+  $("priceNote").textContent = p
+    ? `$${p.input.toFixed(2)} per million tokens in, $${p.output.toFixed(2)} out. A full design with a few rounds of edits usually costs cents to a couple of dollars.`
+    : "";
+}
+
+/* projects ------------------------------------------------------------- */
 
 async function loadProjects(selectId) {
   const { projects } = await api("/api/projects");
@@ -136,8 +183,7 @@ async function loadProjects(selectId) {
     const opt = document.createElement("option");
     opt.value = p.id;
     opt.textContent = p.box_type
-      ? `${p.name} — ${state.boxTypes[p.box_type]?.short || p.box_type}`
-      : p.name;
+      ? `${p.name} — ${state.boxTypes[p.box_type]?.short || p.box_type}` : p.name;
     sel.appendChild(opt);
   }
   const target = selectId || state.projectId || projects[0].id;
@@ -151,6 +197,7 @@ async function openProject(id) {
   const { project } = await api(`/api/projects/${id}`);
   state.project = project;
   state.pending = [];
+  closeEditor();
   paintAll();
 }
 
@@ -159,14 +206,13 @@ async function newProject() {
   if (name === null) return;
   const { project } = await api("/api/projects", {
     method: "POST",
-    body: JSON.stringify({ name: name || "Untitled project",
-                           agent: "packaging_designer" }),
+    body: JSON.stringify({ name: name || "Untitled project", agent: "packaging_designer" }),
   });
   await loadProjects(project.id);
   $("input").focus();
 }
 
-/* painting ----------------------------------------------------------- */
+/* painting -------------------------------------------------------------- */
 
 function paintAll() {
   paintMessages();
@@ -185,8 +231,7 @@ function paintMeter() {
   if (!usage || !usage.runs) { meter.hidden = true; return; }
   meter.hidden = false;
   $("meterCost").textContent = money(usage.cost_usd);
-  $("meterLabel").textContent =
-    `${usage.runs} request${usage.runs === 1 ? "" : "s"} · ` +
+  $("meterLabel").textContent = `${usage.runs} request${usage.runs === 1 ? "" : "s"} · ` +
     `${tokens(usage.input_tokens)} in, ${tokens(usage.output_tokens)} out`;
 }
 
@@ -206,6 +251,23 @@ function paintMessages() {
     p.className = "opening";
     p.textContent = agent.greeting;
     box.appendChild(p);
+    if (agent.starters?.length) {
+      const wrap = document.createElement("div");
+      wrap.className = "starters";
+      for (const s of agent.starters) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "starter"; b.textContent = s + "…";
+        b.onclick = () => {
+          const input = $("input");
+          input.value = s;
+          input.focus();
+          input.setSelectionRange(s.length, s.length);
+          input.dispatchEvent(new Event("input"));
+        };
+        wrap.appendChild(b);
+      }
+      box.appendChild(wrap);
+    }
   }
   for (const msg of project.messages) {
     box.appendChild(bubble(msg.role === "user" ? "user" : "agent", msg.text));
@@ -217,7 +279,8 @@ function paintMessages() {
 function bubble(kind, text) {
   const el = document.createElement("div");
   el.className = "msg " + kind;
-  el.textContent = text;
+  if (kind === "agent") el.innerHTML = markdown(text);
+  else el.textContent = text;
   return el;
 }
 
@@ -235,16 +298,23 @@ function costLine(cost) {
 function paintStructure() {
   const dl = state.project?.dieline;
   if (!dl) {
-    $("structureNote").textContent = "Millimetres, inside dimensions.";
+    $("boxType").value = "ste";
+    for (const id of ["dimW", "dimD", "dimH"]) $(id).value = "";
+    $("dimW").placeholder = "50"; $("dimD").placeholder = "40"; $("dimH").placeholder = "120";
+    $("structureNote").textContent = "Millimetres, inside dimensions. The designer fills these in, or set them yourself.";
     return;
   }
   $("boxType").value = dl.box_type;
   $("dimW").value = Math.round(dl.dims.width);
   $("dimD").value = Math.round(dl.dims.depth);
   $("dimH").value = Math.round(dl.dims.height);
+  const blank = dl.blank || dl.sheet;
   $("structureNote").textContent =
-    `Flat sheet ${Math.round(dl.sheet.width)} × ${Math.round(dl.sheet.height)} mm. ${dl.material_hint}`;
+    `Blank ${Math.round(blank.width)} × ${Math.round(blank.height)} mm. ${dl.material_hint}`;
 }
+
+const panelGeo = (id) => state.project?.dieline?.panels?.find((p) => p.id === id);
+const panelLabel = (id) => panelGeo(id)?.label || id;
 
 function paintLayers() {
   const list = $("layerList");
@@ -253,7 +323,7 @@ function paintLayers() {
   list.innerHTML = "";
   if (!layers.length) {
     list.innerHTML = `<p class="note">Nothing drawn yet. Once the designer builds
-      artwork, every element shows up here and can be hidden one at a time.</p>`;
+      artwork, every element shows up here. Click one to edit it.</p>`;
     return;
   }
   let lastPanel = null;
@@ -266,7 +336,9 @@ function paintLayers() {
       list.appendChild(head);
     }
     const row = document.createElement("div");
-    row.className = "layer" + (layer.visible === false ? " off" : "");
+    row.className = "layer" + (layer.visible === false ? " off" : "") +
+      (state.editing === layer.id ? " selected" : "");
+    row.dataset.id = layer.id;
 
     const swatch = document.createElement("span");
     const hex = layer.fill && /^#[0-9a-f]{3,8}$/i.test(layer.fill) ? layer.fill : null;
@@ -280,43 +352,144 @@ function paintLayers() {
 
     const type = document.createElement("span");
     type.className = "ltype";
-    type.textContent = layer.type;
+    type.textContent = (layer.type || "").replace("_", " ");
 
     const eye = document.createElement("button");
     eye.className = "eye";
     eye.textContent = layer.visible === false ? "hidden" : "●";
     eye.title = layer.visible === false ? "Show" : "Hide";
-    eye.onclick = () => toggleLayer(layer);
+    eye.onclick = (e) => { e.stopPropagation(); toggleLayer(layer); };
 
     row.append(swatch, name, type, eye);
+    row.onclick = () => openEditor(layer, row);
+    row.onmouseenter = () => highlight(layer.id, true);
+    row.onmouseleave = () => highlight(layer.id, false);
     list.appendChild(row);
   }
 }
 
-function panelLabel(id) {
-  return state.project?.dieline?.panels?.find((p) => p.id === id)?.label || id;
+/* Hovering a layer dims everything else in the flat view. */
+function highlight(id, on) {
+  const svg = $("view-flat").querySelector("svg");
+  if (!svg) return;
+  svg.classList.toggle("focusing", on);
+  svg.querySelectorAll(`[data-layer="${CSS.escape(id)}"]`).forEach((g) => g.classList.toggle("lit", on));
+}
+
+async function patchLayers(patches) {
+  const data = await api(`/api/projects/${state.projectId}/layers`, {
+    method: "POST", body: JSON.stringify({ patches }),
+  });
+  state.project.layers = data.layers;
+  paintLayers();
+  refreshView();
+  return data;
 }
 
 async function toggleLayer(layer) {
+  try { await patchLayers([{ op: "update", id: layer.id, set: { visible: layer.visible === false } }]); }
+  catch (err) { toast(err.message, true); }
+}
+
+/* layer editor ---------------------------------------------------------- */
+
+function fullLayer(id) {
+  for (const panel of Object.values(state.project?.artwork?.panels || {}))
+    for (const l of panel.layers || []) if (l.id === id) return l;
+  return null;
+}
+
+function openEditor(summary, anchor) {
+  // Measure before repainting: paintLayers() replaces the row we were given.
+  const r = anchor?.getBoundingClientRect?.() || { top: 120, left: window.innerWidth - 300 };
+  const layer = fullLayer(summary.id) || summary;
+  state.editing = layer.id;
+  paintLayers();
+  const fields = $("editorFields");
+  fields.innerHTML = "";
+  $("editorTitle").textContent = `${panelLabel(summary.panel)} · ${(layer.type || "").replace("_", " ")}`;
+
+  const add = (html) => { fields.insertAdjacentHTML("beforeend", html); };
+  const colour = typeof layer.fill === "string" ? layer.fill : (layer.color || "#111111");
+
+  if (layer.type === "text" || layer.type === "circle_text") {
+    add(`<label class="field"><span>Text</span><textarea data-key="text">${escapeHtml(layer.text || "")}</textarea></label>`);
+    add(`<div class="pair">
+      <label class="field"><span>Size, mm</span><input data-key="size" type="number" step="0.1" min="1.5" value="${layer.size ?? 3}"></label>
+      <label class="field"><span>Colour</span><input data-key="fill" type="color" value="${toHex(colour)}"></label></div>`);
+  } else if (layer.type === "barcode") {
+    add(`<label class="field"><span>EAN-13 digits</span><input data-key="digits" type="text" value="${escapeHtml(layer.digits || "")}" placeholder="12 or 13 digits"></label>`);
+    add(`<p class="note">Your GTIN comes from GS1. The check digit is worked out for you.</p>`);
+  } else if (layer.type === "icon") {
+    add(`<div class="pair">
+      <label class="field"><span>Label</span><input data-key="label" type="text" value="${escapeHtml(layer.label || "")}" placeholder="e.g. 12M"></label>
+      <label class="field"><span>Colour</span><input data-key="color" type="color" value="${toHex(layer.color || colour)}"></label></div>`);
+  } else if (typeof layer.fill === "string" || ["rect", "ellipse", "arch", "star", "circle"].includes(layer.type)) {
+    add(`<label class="field"><span>Colour</span><input data-key="fill" type="color" value="${toHex(colour)}"></label>`);
+  } else if (layer.type === "pattern") {
+    add(`<label class="field"><span>Colour</span><input data-key="color" type="color" value="${toHex(layer.color || "#000000")}"></label>`);
+  }
+  add(`<div class="pair">
+    <label class="field"><span>x, mm</span><input data-key="x" type="number" step="0.5" value="${layer.x ?? 0}"></label>
+    <label class="field"><span>y, mm</span><input data-key="y" type="number" step="0.5" value="${layer.y ?? 0}"></label></div>`);
+  add(`<p class="note">Free and instant: this edits the file directly. Ask the designer in the chat for anything bigger.</p>`);
+
+  const box = $("layerEditor");
+  box.hidden = false;
+  const top = Math.min(window.innerHeight - box.offsetHeight - 12, Math.max(12, r.top - 20));
+  box.style.top = top + "px";
+  box.style.left = Math.max(12, r.left - box.offsetWidth - 12) + "px";
+  fields.querySelector("textarea, input")?.focus();
+}
+
+function toHex(value) {
+  if (typeof value !== "string") return "#111111";
+  let v = value.trim();
+  if (/^#[0-9a-f]{3}$/i.test(v)) v = "#" + [...v.slice(1)].map((c) => c + c).join("");
+  return /^#[0-9a-f]{6}$/i.test(v) ? v : "#111111";
+}
+
+function closeEditor() {
+  $("layerEditor").hidden = true;
+  if (state.editing) { state.editing = null; paintLayers(); }
+}
+
+async function saveEditor() {
+  const id = state.editing;
+  if (!id) return;
+  const set = {};
+  $("editorFields").querySelectorAll("[data-key]").forEach((el) => {
+    const key = el.dataset.key;
+    set[key] = el.type === "number" ? Number(el.value) : el.value;
+  });
   try {
-    const data = await api(`/api/projects/${state.projectId}/layers`, {
-      method: "POST",
-      body: JSON.stringify({ patches: [{ op: "update", id: layer.id,
-                                         set: { visible: layer.visible === false } }] }),
-    });
-    state.project.layers = data.layers;
+    await patchLayers([{ op: "update", id, set }]);
+    const { project } = await api(`/api/projects/${state.projectId}`);
+    state.project = project;
+    closeEditor();
     paintLayers();
-    refreshView();
+    toast("Layer saved.");
+  } catch (err) { toast(err.message, true); }
+}
+
+async function deleteFromEditor() {
+  const id = state.editing;
+  if (!id || !confirm("Delete this layer?")) return;
+  try {
+    await patchLayers([{ op: "delete", id }]);
+    const { project } = await api(`/api/projects/${state.projectId}`);
+    state.project = project;
+    closeEditor();
+    paintLayers();
   } catch (err) { toast(err.message, true); }
 }
 
 function paintAssets() {
   const list = $("assetList");
-  const assets = state.project?.assets || [];
+  const assets = (state.project?.assets || []).filter((a) => a.role !== "photo");
   list.innerHTML = "";
   if (!assets.length) {
-    list.innerHTML = `<p class="note">None yet. Drop one into the chat, or paste
-      with ⌘V.</p>`;
+    list.innerHTML = `<p class="note">None yet. Attach one in the chat, or paste with ⌘V.</p>`;
     return;
   }
   for (const asset of assets) {
@@ -344,7 +517,7 @@ function paintAttachments() {
   });
 }
 
-/* views -------------------------------------------------------------- */
+/* views ------------------------------------------------------------------ */
 
 const hasStructure = () => Boolean(state.project?.dieline);
 
@@ -367,14 +540,13 @@ async function loadSvg(mode, targetId) {
     if (!res.ok) throw new Error("Preview unavailable");
     target.innerHTML = await res.text();
   } catch (err) {
-    target.innerHTML = `<p class="note">${err.message}</p>`;
+    target.innerHTML = `<p class="note">${escapeHtml(err.message)}</p>`;
   }
 }
 
 async function loadFaces() {
   const grid = $("faceGrid");
-  const panels = (state.project?.dieline?.panels || [])
-    .filter((p) => p.printable !== false);
+  const panels = (state.project?.dieline?.panels || []).filter((p) => p.printable !== false);
   grid.innerHTML = "";
   for (const panel of panels) {
     const card = document.createElement("div");
@@ -384,7 +556,8 @@ async function loadFaces() {
     art.innerHTML = `<p class="note">loading…</p>`;
     const cap = document.createElement("div");
     cap.className = "face-cap";
-    cap.innerHTML = `<b>${panel.label}</b><span>${Math.round(panel.w)} × ${Math.round(panel.h)} mm</span>`;
+    const w = panel.dw ?? panel.w, h = panel.dh ?? panel.h;
+    cap.innerHTML = `<b>${escapeHtml(panel.label)}</b><span>${Math.round(w)} × ${Math.round(h)} mm</span>`;
     card.append(art, cap);
     grid.appendChild(card);
     fetch(`/api/projects/${state.projectId}/render?mode=panel&panel=${panel.id}&t=${Date.now()}`)
@@ -405,8 +578,7 @@ async function loadExports() {
       name.className = "fname"; name.textContent = file.name;
       const size = document.createElement("span");
       size.className = "fsize";
-      size.textContent = file.bytes > 1048576
-        ? (file.bytes / 1048576).toFixed(1) + " MB"
+      size.textContent = file.bytes > 1048576 ? (file.bytes / 1048576).toFixed(1) + " MB"
         : Math.max(1, Math.round(file.bytes / 1024)) + " KB";
       const link = document.createElement("a");
       link.href = `/api/projects/${state.projectId}/exports/${encodeURIComponent(file.name)}`;
@@ -417,7 +589,56 @@ async function loadExports() {
   } catch (err) { toast(err.message, true); }
 }
 
-/* 3D ------------------------------------------------------------------ */
+/* letting the designer see its own work ------------------------------------ */
+
+function svgToPng(svgText, longSide, type = "image/png", quality = 0.92) {
+  // A data URL rather than a blob URL: Safari is stricter about blob SVGs on canvas.
+  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w0 = img.naturalWidth || 800, h0 = img.naturalHeight || 800;
+      const k = longSide / Math.max(w0, h0);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(w0 * k));
+      canvas.height = Math.max(1, Math.round(h0 * k));
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      try { resolve(canvas.toDataURL(type, quality)); } catch (e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error("render failed"));
+    img.src = url;
+  });
+}
+
+async function renderForAgent(requestId, panel, runEl) {
+  try {
+    const all = panel === "all";
+    const query = all ? "mode=print" : `mode=panel&panel=${encodeURIComponent(panel)}`;
+    const res = await fetch(`/api/projects/${state.projectId}/render?${query}&t=${Date.now()}`);
+    const svg = await res.text();
+    // give embedded webfonts a moment to decode before rasterising
+    await new Promise((r) => setTimeout(r, 250));
+    const png = await svgToPng(svg, all ? 1500 : 1100, "image/jpeg", 0.9);
+    await api(`/api/projects/${state.projectId}/render_result`, {
+      method: "POST",
+      body: JSON.stringify({ request_id: requestId, png, media_type: "image/jpeg" }),
+    });
+    if (runEl) {
+      const look = document.createElement("div");
+      look.className = "look";
+      look.innerHTML = `<img alt="What the designer looked at" src="${png}"><span>Checked ${escapeHtml(all ? "the whole layout" : panelLabel(panel))}</span>`;
+      runEl.after(look);
+    }
+    refreshView();
+  } catch (err) {
+    console.warn("render for agent failed", err);
+  }
+}
+
+/* 3D ---------------------------------------------------------------------- */
 
 async function loadThree() {
   if (typeof THREE === "undefined") {
@@ -431,15 +652,13 @@ async function loadThree() {
   state.three.build(data);
 }
 
-/* Surfaces to stand the package on. Chosen by eye in the viewport, and the
-   names line up with the photo scenes so one leads naturally into the other. */
 const SURFACES = [
-  { id: "studio", label: "Studio",  swatch: "#e9e6df" },
-  { id: "marble", label: "Marble",  swatch: "#eceae5" },
-  { id: "wood",   label: "Wood",    swatch: "#9a6c42" },
-  { id: "linen",  label: "Linen",   swatch: "#d6cdbb" },
-  { id: "shelf",  label: "Shelf",   swatch: "#c2a983" },
-  { id: "dark",   label: "Dark",    swatch: "#23262d" },
+  { id: "studio", label: "Studio", swatch: "#e9e6df" },
+  { id: "marble", label: "Marble", swatch: "#eceae5" },
+  { id: "wood", label: "Wood", swatch: "#9a6c42" },
+  { id: "linen", label: "Linen", swatch: "#d6cdbb" },
+  { id: "shelf", label: "Shelf", swatch: "#c2a983" },
+  { id: "dark", label: "Dark", swatch: "#23262d" },
 ];
 
 function paintSurfaces() {
@@ -449,16 +668,10 @@ function paintSurfaces() {
     const btn = document.createElement("button");
     btn.className = "surface" + (s.id === state.surface ? " on" : "");
     btn.innerHTML = `<i style="background:${s.swatch}"></i><span>${s.label}</span>`;
-    btn.onclick = () => {
-      state.surface = s.id;
-      state.three?.setSurface(s.id);
-      paintSurfaces();
-    };
+    btn.onclick = () => { state.surface = s.id; state.three?.setSurface(s.id); paintSurfaces(); };
     strip.appendChild(btn);
   }
 }
-
-/* --- procedural materials: no texture files to ship or download --- */
 
 function canvasTexture(width, height, draw) {
   const c = document.createElement("canvas");
@@ -477,13 +690,12 @@ function grain(ctx, w, h, amount, alpha) {
 }
 
 const SURFACE_ART = {
-  wood: (ctx, w, h) => {
+  wood(ctx, w, h) {
     ctx.fillStyle = "#8d6039"; ctx.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 2 + Math.random() * 5) {
       ctx.strokeStyle = `rgba(${60 + Math.random() * 40},${35 + Math.random() * 25},18,${0.05 + Math.random() * 0.16})`;
       ctx.lineWidth = 0.6 + Math.random() * 2.4;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
+      ctx.beginPath(); ctx.moveTo(0, y);
       for (let x = 0; x <= w; x += 32) ctx.lineTo(x, y + Math.sin(x / 70) * 3.5 + (Math.random() - 0.5) * 2);
       ctx.stroke();
     }
@@ -497,7 +709,7 @@ const SURFACE_ART = {
     }
     grain(ctx, w, h, 9000, 0.05);
   },
-  marble: (ctx, w, h) => {
+  marble(ctx, w, h) {
     ctx.fillStyle = "#e8e6e0"; ctx.fillRect(0, 0, w, h);
     const vein = (count, alpha, width) => {
       for (let i = 0; i < count; i++) {
@@ -506,19 +718,15 @@ const SURFACE_ART = {
         ctx.beginPath();
         let x = Math.random() * w, y = -10;
         ctx.moveTo(x, y);
-        while (y < h + 10) {
-          x += (Math.random() - 0.45) * 64;
-          y += 10 + Math.random() * 22;
-          ctx.lineTo(x, y);
-        }
+        while (y < h + 10) { x += (Math.random() - 0.45) * 64; y += 10 + Math.random() * 22; ctx.lineTo(x, y); }
         ctx.stroke();
       }
     };
-    vein(9, 0.34, 3.2);    // the few bold ones
-    vein(30, 0.14, 1.1);   // the hairline network
+    vein(9, 0.34, 3.2);
+    vein(30, 0.14, 1.1);
     grain(ctx, w, h, 5000, 0.03);
   },
-  linen: (ctx, w, h) => {
+  linen(ctx, w, h) {
     ctx.fillStyle = "#ded5c3"; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = "rgba(120,108,88,.1)"; ctx.lineWidth = 1;
     for (let i = 0; i < w; i += 3) {
@@ -527,36 +735,32 @@ const SURFACE_ART = {
     }
     grain(ctx, w, h, 14000, 0.07);
   },
-  shelf: (ctx, w, h) => {
-    SURFACE_ART.wood(ctx, w, h);
-    ctx.fillStyle = "rgba(230,215,190,.26)"; ctx.fillRect(0, 0, w, h);
-  },
-  dark: (ctx, w, h) => {
-    ctx.fillStyle = "#23262d"; ctx.fillRect(0, 0, w, h);
-    grain(ctx, w, h, 18000, 0.22);
-  },
-  studio: (ctx, w, h) => { ctx.fillStyle = "#e4e1da"; ctx.fillRect(0, 0, w, h); },
+  shelf(ctx, w, h) { SURFACE_ART.wood(ctx, w, h); ctx.fillStyle = "rgba(230,215,190,.26)"; ctx.fillRect(0, 0, w, h); },
+  dark(ctx, w, h) { ctx.fillStyle = "#23262d"; ctx.fillRect(0, 0, w, h); grain(ctx, w, h, 18000, 0.22); },
+  studio(ctx, w, h) { ctx.fillStyle = "#e4e1da"; ctx.fillRect(0, 0, w, h); },
 };
 
 const BACKDROP = {
-  studio: ["#f4f2ee", "#dcd8d0"],
-  marble: ["#f6f5f2", "#d9d6cf"],
-  wood:   ["#efe3d2", "#c5a984"],
-  linen:  ["#f1ebe0", "#d4c9b6"],
-  shelf:  ["#efe6d8", "#c9b89c"],
-  dark:   ["#1d2026", "#0e1014"],
+  studio: ["#f4f2ee", "#dcd8d0"], marble: ["#f6f5f2", "#d9d6cf"],
+  wood: ["#efe3d2", "#c5a984"], linen: ["#f1ebe0", "#d4c9b6"],
+  shelf: ["#efe6d8", "#c9b89c"], dark: ["#1d2026", "#0e1014"],
+};
+
+const CAMERAS = {
+  front: { theta: 0.0, phi: 1.43, dist: 8.2 },
+  three: { theta: 0.62, phi: 1.2, dist: 8.4 },
+  side: { theta: Math.PI / 2, phi: 1.4, dist: 8.2 },
+  top: { theta: 0.001, phi: 0.34, dist: 8.2 },
+  back: { theta: Math.PI, phi: 1.35, dist: 8.2 },
 };
 
 function createThree(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true,
-                                             preserveDrawingBuffer: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  // Filmic tone mapping plus sRGB output is most of what separates a render
-  // that looks like a render from one that looks like a photograph.
   if (THREE.ACESFilmicToneMapping) renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 0.92;
   if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
 
   const scene = new THREE.Scene();
@@ -564,88 +768,85 @@ function createThree(canvas) {
   const root = new THREE.Group();
   scene.add(root);
 
-  const key = new THREE.DirectionalLight(0xfff6e8, 2.1);
+  const key = new THREE.DirectionalLight(0xfff6e8, 1.75);
   key.position.set(4.5, 7, 5.5);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.near = 1; key.shadow.camera.far = 40;
-  key.shadow.camera.left = -8; key.shadow.camera.right = 8;
-  key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
+  Object.assign(key.shadow.camera, { near: 1, far: 40, left: -8, right: 8, top: 8, bottom: -8 });
   key.shadow.bias = -0.0008;
   key.shadow.radius = 3;
-
-  const rim = new THREE.DirectionalLight(0xdfe8ff, 0.7);
-  rim.position.set(-6, 3.5, -4.5);
+  // Low and to the side. Placed high behind the box, this light mirrored off
+  // the lid straight into the camera and turned dark tops pale grey.
+  const rim = new THREE.DirectionalLight(0xdfe8ff, 0.6);
+  rim.position.set(-7, 1.0, 1.5);
   const ambient = new THREE.AmbientLight(0xffffff, 0.22);
   scene.add(key, rim, ambient);
 
-  /* A soft dark patch directly under the box. Shadow maps alone wash out on a
-     bright surface, and without this the package looks like it is hovering. */
-  const contactTexture = canvasTexture(256, 256, (ctx, w, h) => {
-    const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-    g.addColorStop(0, "rgba(0,0,0,.55)");
-    g.addColorStop(0.3, "rgba(0,0,0,.26)");
-    g.addColorStop(0.62, "rgba(0,0,0,.07)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  });
+  // a soft dark patch under the box, so it sits on the surface instead of hovering
   const contact = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
-    new THREE.MeshBasicMaterial({ map: contactTexture, transparent: true,
-                                  depthWrite: false })
+    new THREE.MeshBasicMaterial({
+      map: canvasTexture(256, 256, (ctx, w, h) => {
+        const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+        g.addColorStop(0, "rgba(0,0,0,.55)"); g.addColorStop(0.3, "rgba(0,0,0,.26)");
+        g.addColorStop(0.62, "rgba(0,0,0,.07)"); g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }),
+      transparent: true, depthWrite: false,
+    })
   );
   contact.rotation.x = -Math.PI / 2;
   contact.position.y = 0.004;
   contact.renderOrder = 1;
 
-  /* An environment map gives the carton something to reflect, which is what
-     makes a varnished surface read as a surface instead of flat colour. */
   const pmrem = new THREE.PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader?.();
 
   function buildEnvironment(top, bottom, warm) {
+    // A studio, not a sky: the ceiling is dim and the light comes from two
+    // softboxes. A bright overhead would mirror onto every lid and wash a dark
+    // carton top out to grey.
     const tex = canvasTexture(1024, 512, (ctx, w, h) => {
       const sky = ctx.createLinearGradient(0, 0, 0, h);
-      sky.addColorStop(0, top);
-      sky.addColorStop(0.52, top);
+      sky.addColorStop(0, "#3a3a3c");
+      sky.addColorStop(0.32, "#77767a");
+      sky.addColorStop(0.5, top);
       sky.addColorStop(0.56, bottom);
       sky.addColorStop(1, bottom);
       ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
-      // key softbox
-      const box = ctx.createRadialGradient(w * 0.3, h * 0.2, 10, w * 0.3, h * 0.2, w * 0.2);
-      box.addColorStop(0, warm ? "#fffaf0" : "#ffffff");
-      box.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = box; ctx.fillRect(0, 0, w, h * 0.6);
-      // soft fill opposite
-      const fill = ctx.createRadialGradient(w * 0.76, h * 0.3, 10, w * 0.76, h * 0.3, w * 0.17);
-      fill.addColorStop(0, "rgba(255,255,255,.55)");
-      fill.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h * 0.7);
+      const soft = (cx, cy, rx, ry, a) => {
+        const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, rx);
+        g.addColorStop(0, `rgba(255,${warm ? 248 : 255},${warm ? 236 : 255},${a})`);
+        g.addColorStop(0.55, `rgba(255,255,255,${a * 0.55})`);
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.save(); ctx.translate(cx, cy); ctx.scale(1, ry / rx); ctx.translate(-cx, -cy);
+        ctx.fillStyle = g; ctx.fillRect(cx - rx, cy - rx, rx * 2, rx * 2); ctx.restore();
+      };
+      soft(w * 0.3, h * 0.34, w * 0.11, h * 0.16, 1.0);   // key softbox, front left
+      soft(w * 0.78, h * 0.38, w * 0.08, h * 0.12, 0.5);  // fill, back right
     });
     tex.mapping = THREE.EquirectangularReflectionMapping;
-    const target = pmrem.fromEquirectangular(tex);
-    scene.environment = target.texture;
+    scene.environment = pmrem.fromEquirectangular(tex).texture;
     tex.dispose();
   }
 
   let backdrop = null, ground = null;
-
   function buildStage(name) {
     const [top, bottom] = BACKDROP[name] || BACKDROP.studio;
     buildEnvironment(top, bottom, name === "wood" || name === "shelf");
-
     if (backdrop) { scene.remove(backdrop); backdrop.geometry.dispose(); backdrop.material.dispose(); }
-    const sky = canvasTexture(16, 256, (ctx, w, h) => {
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, top); g.addColorStop(1, bottom);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    });
     backdrop = new THREE.Mesh(
       new THREE.SphereGeometry(60, 32, 24),
-      new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({
+        side: THREE.BackSide,
+        map: canvasTexture(16, 256, (ctx, w, h) => {
+          const g = ctx.createLinearGradient(0, 0, 0, h);
+          g.addColorStop(0, top); g.addColorStop(1, bottom);
+          ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        }),
+      })
     );
     scene.add(backdrop);
-
     if (ground) { scene.remove(ground); ground.geometry.dispose(); ground.material.dispose(); }
     const surface = canvasTexture(512, 512, SURFACE_ART[name] || SURFACE_ART.studio);
     surface.wrapS = surface.wrapT = THREE.RepeatWrapping;
@@ -653,9 +854,8 @@ function createThree(canvas) {
     ground = new THREE.Mesh(
       new THREE.PlaneGeometry(80, 80),
       new THREE.MeshStandardMaterial({
-        map: surface,
+        map: surface, metalness: 0,
         roughness: name === "marble" ? 0.3 : name === "dark" ? 0.55 : 0.8,
-        metalness: 0,
         envMapIntensity: name === "marble" ? 0.7 : 0.3,
       })
     );
@@ -664,11 +864,10 @@ function createThree(canvas) {
     scene.add(ground);
   }
 
-  const ctl = { theta: 0.58, phi: 1.22, dist: 8.4, spin: false, surface: "studio" };
+  const ctl = { ...CAMERAS.three, spin: false, surface: "studio", target: null };
   let dragging = false, lastX = 0, lastY = 0;
-
   canvas.addEventListener("pointerdown", (e) => {
-    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    dragging = true; ctl.target = null; lastX = e.clientX; lastY = e.clientY;
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener("pointermove", (e) => {
@@ -696,30 +895,44 @@ function createThree(canvas) {
     return t;
   };
 
-  /* Printed board: slightly rough, with a thin varnish on top. Clearcoat is
-     what gives the edge highlight you see on a real laminated carton. */
+  // printed board: slightly rough, with a thin varnish that catches the light
   function face(entry, fallback) {
     const Material = THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial;
-    const opts = {
-      roughness: 0.52, metalness: 0.0, envMapIntensity: 0.75,
-      clearcoat: 0.3, clearcoatRoughness: 0.42,
-    };
+    const opts = { roughness: 0.6, metalness: 0, envMapIntensity: 0.45,
+                   clearcoat: 0.16, clearcoatRoughness: 0.5 };
     if (entry) opts.map = tex(entry.url); else opts.color = fallback;
     return new Material(opts);
   }
 
-  function makeBox(textures, dims, scale) {
-    const w = dims.width * scale, h = dims.height * scale, d = dims.depth * scale;
+  function box(w, h, d, faces) {
     const side = "#ded9d1";
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [
-      face(textures.right, side), face(textures.left, side),
-      face(textures.top, side), face(textures.bottom, side),
-      face(textures.front, side), face(textures.back, side),
+      face(faces.right, side), face(faces.left, side), face(faces.top, side),
+      face(faces.bottom, side), face(faces.front, side), face(faces.back, side),
     ]);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.position.y = h / 2;
+    mesh.castShadow = true; mesh.receiveShadow = true;
     return mesh;
+  }
+
+  function makePackage(t, dims, scale) {
+    const w = dims.width * scale, h = dims.height * scale, d = dims.depth * scale;
+    const group = new THREE.Group();
+    if (t.lid_front && t.top) {
+      // lid and base: the lid is a separate, slightly larger box over the top
+      const base = box(w, h, d, { front: t.front, back: t.back, left: t.left, right: t.right, bottom: t.bottom });
+      base.position.y = h / 2;
+      const lidH = (t.lid_front.h || dims.height * 0.35) * scale;
+      const lw = (t.top.w || dims.width + 3) * scale, ld = (t.top.h || dims.depth + 3) * scale;
+      const lid = box(lw, lidH, ld, { top: t.top, front: t.lid_front, back: t.lid_back,
+                                      left: t.lid_left, right: t.lid_right });
+      lid.position.y = h - lidH / 2 + 0.6 * scale;
+      group.add(base, lid);
+    } else {
+      const mesh = box(w, h, d, t);
+      mesh.position.y = h / 2;
+      group.add(mesh);
+    }
+    return group;
   }
 
   let current = null;
@@ -728,16 +941,14 @@ function createThree(canvas) {
     const biggest = Math.max(data.dims.width, data.dims.height, data.dims.depth);
     const scale = 2.6 / biggest;
     current = data;
-    root.add(makeBox(data.textures, data.dims, scale));
-
+    root.add(makePackage(data.textures, data.dims, scale));
     const footprint = Math.max(data.dims.width, data.dims.depth) * scale;
     contact.scale.set(footprint * 2.1, footprint * 2.1, 1);
     root.add(contact);
-
     if (ctl.surface === "shelf") {
       const gap = data.dims.width * scale * 1.25;
       for (const offset of [-gap, gap]) {
-        const clone = makeBox(data.textures, data.dims, scale);
+        const clone = makePackage(data.textures, data.dims, scale);
         clone.position.x = offset;
         clone.rotation.y = offset < 0 ? 0.1 : -0.1;
         root.add(clone);
@@ -755,18 +966,25 @@ function createThree(canvas) {
     camera.updateProjectionMatrix();
   }
   new ResizeObserver(resize).observe(canvas.parentElement);
-
   buildStage("studio");
 
   (function loop() {
     requestAnimationFrame(loop);
-    if (ctl.spin) ctl.theta += 0.0035;
+    if (ctl.target) {
+      // ease towards a preset view
+      let dt = ctl.target.theta - ctl.theta;
+      dt = Math.atan2(Math.sin(dt), Math.cos(dt));
+      ctl.theta += dt * 0.14;
+      ctl.phi += (ctl.target.phi - ctl.phi) * 0.14;
+      ctl.dist += (ctl.target.dist - ctl.dist) * 0.14;
+      if (Math.abs(dt) < 0.002 && Math.abs(ctl.target.phi - ctl.phi) < 0.002) ctl.target = null;
+    } else if (ctl.spin) {
+      ctl.theta += 0.0035;
+    }
     const r = ctl.dist;
-    camera.position.set(
-      r * Math.sin(ctl.phi) * Math.sin(ctl.theta),
-      r * Math.cos(ctl.phi) + 1.2,
-      r * Math.sin(ctl.phi) * Math.cos(ctl.theta)
-    );
+    camera.position.set(r * Math.sin(ctl.phi) * Math.sin(ctl.theta),
+                        r * Math.cos(ctl.phi) + 1.2,
+                        r * Math.sin(ctl.phi) * Math.cos(ctl.theta));
     camera.lookAt(0, 1.15, 0);
     renderer.render(scene, camera);
   })();
@@ -774,13 +992,14 @@ function createThree(canvas) {
   return {
     build,
     setSurface: (name) => { ctl.surface = name; if (current) build(current); else buildStage(name); },
+    view: (name) => { ctl.spin = false; ctl.target = { ...CAMERAS[name] }; },
     toggleSpin: () => (ctl.spin = !ctl.spin),
     snapshot: () => renderer.domElement.toDataURL("image/png"),
     ready: () => Boolean(current),
   };
 }
 
-/* photos --------------------------------------------------------------- */
+/* photos ---------------------------------------------------------------- */
 
 function paintScenes() {
   const wrap = $("sceneCards");
@@ -789,17 +1008,17 @@ function paintScenes() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "scene" + (scene.id === state.scene ? " on" : "");
-    btn.innerHTML = `<b>${scene.label}</b><span>${scene.blurb}</span>`;
+    btn.innerHTML = `<b>${escapeHtml(scene.label)}</b><span>${escapeHtml(scene.blurb)}</span>`;
     btn.onclick = () => { state.scene = scene.id; paintScenes(); };
     wrap.appendChild(btn);
   }
   const intro = $("photoIntro");
-  if (state.config.image_provider === "none") {
-    intro.innerHTML = "This needs an image model, because Claude cannot make " +
-      "photographs. Add a Google Gemini key under <b>Settings</b> and this tab " +
-      "will put your package into real settings — held in a hand, on a marble " +
-      "counter, on a shelf.";
-  }
+  intro.innerHTML = state.config.image_provider === "none"
+    ? "This needs an image model, because Claude cannot make photographs. Add a Google " +
+      "Gemini key under <b>Settings</b> and this tab will put your package into real " +
+      "settings — held in a hand, on a marble counter, on a shelf."
+    : "Pick a setting. The 3D render goes to your image model, which builds a real scene " +
+      "around it and keeps the package exactly as designed.";
 }
 
 function paintGallery() {
@@ -810,7 +1029,7 @@ function paintGallery() {
     const card = document.createElement("div");
     card.className = "shot-card";
     const url = `/api/projects/${state.projectId}/assets/${photo.id}`;
-    card.innerHTML = `<img src="${url}" alt="${photo.scene || "photo"}" loading="lazy">`;
+    card.innerHTML = `<img src="${url}" alt="${escapeHtml(photo.scene || "photo")}" loading="lazy">`;
     const link = document.createElement("a");
     link.href = url; link.download = photo.name || "photo.png"; link.textContent = "Save";
     card.appendChild(link);
@@ -822,8 +1041,6 @@ async function shoot() {
   if (!state.projectId) return;
   if (!hasStructure()) { toast("Design something first.", true); return; }
   const status = $("photoStatus");
-
-  // The render is the input, so the 3D view has to have run at least once.
   if (!state.three || !state.three.ready()) {
     status.textContent = "Preparing the render…";
     await loadThree();
@@ -831,20 +1048,27 @@ async function shoot() {
   }
   const render = state.three?.snapshot();
   if (!render) { toast("Could not capture the render.", true); return; }
-
   const button = $("shoot");
   button.disabled = true; button.textContent = "Shooting";
   status.textContent = "Building the scene. This takes a few seconds.";
+  // The flat front at high resolution, so the model has every letter sharp.
+  let front = null;
+  try {
+    const res = await fetch(`/api/projects/${state.projectId}/render?mode=panel&panel=front&t=${Date.now()}`);
+    if (res.ok) {
+      const svg = await res.text();
+      await new Promise((r) => setTimeout(r, 200));
+      front = await svgToPng(svg, 1400);
+    }
+  } catch { front = null; }
   try {
     await api(`/api/projects/${state.projectId}/photoshoot`, {
       method: "POST",
-      body: JSON.stringify({
-        render, scene: state.scene,
-        notes: $("photoNotes").value, aspect: $("photoAspect").value,
-      }),
+      body: JSON.stringify({ render, front, scene: state.scene,
+                             notes: $("photoNotes").value, aspect: $("photoAspect").value }),
     });
     await openProject(state.projectId);
-    status.textContent = "Done. Shoot again for another take — results vary.";
+    status.textContent = "Done. Shoot again for another take; every one comes out a little different.";
   } catch (err) {
     status.textContent = "";
     toast(err.message, true);
@@ -853,7 +1077,7 @@ async function shoot() {
   }
 }
 
-/* sending ------------------------------------------------------------- */
+/* sending ---------------------------------------------------------------- */
 
 async function send(event) {
   event?.preventDefault();
@@ -884,8 +1108,8 @@ async function send(event) {
   setBusy(true);
 
   const box = $("messages");
-  box.appendChild(bubble("user",
-    text || `[${assetIds.length} image${assetIds.length > 1 ? "s" : ""} sent]`));
+  box.querySelector(".starters")?.remove();
+  box.appendChild(bubble("user", text || `[${assetIds.length} image${assetIds.length > 1 ? "s" : ""} sent]`));
 
   const pending = document.createElement("div");
   pending.className = "pending";
@@ -894,21 +1118,20 @@ async function send(event) {
   box.scrollTop = box.scrollHeight;
 
   const runs = new Map();
-  let liveCost = null;
+  let liveCost = null, changed = false, live = null;
 
   try {
     const res = await fetch(`/api/projects/${state.projectId}/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ text, asset_ids: assetIds }),
     });
     if (!res.ok || !res.body) throw new Error("The server refused the request.");
-
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
+    let finished = false;
+    while (!finished) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -917,39 +1140,52 @@ async function send(event) {
       for (const chunk of chunks) {
         const line = chunk.split("\n").find((l) => l.startsWith("data: "));
         if (!line) continue;
-        let event;
-        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
 
-        if (event.type === "assistant") {
-          pending.remove();
-          box.appendChild(bubble("agent", event.text));
-        } else if (event.type === "tool_start") {
+        if (ev.type === "assistant_delta") {
+          // the reply arriving as it is written
+          if (!live) { live = bubble("agent", ""); box.appendChild(live); }
+          live.textContent += ev.text;
+          box.appendChild(pending);
+        } else if (ev.type === "assistant_reset") {
+          if (live) { live.remove(); live = null; }
+        } else if (ev.type === "assistant") {
+          if (live) { live.textContent = ev.text; live = null; }
+          else box.appendChild(bubble("agent", ev.text));
+          box.appendChild(pending);
+        } else if (ev.type === "status") {
+          pending.dataset.label = ev.text || "";
+        } else if (ev.type === "tool_start") {
+          live = null;
           const run = document.createElement("div");
           run.className = "run";
-          run.innerHTML = `<span class="tick"></span><span>${event.label}</span>`;
-          runs.set(event.id || event.name, run);
+          run.innerHTML = `<span class="tick"></span><span>${escapeHtml(ev.label)}</span>`;
+          runs.set(ev.id || ev.name, run);
           box.appendChild(run);
-        } else if (event.type === "tool_end") {
-          const run = runs.get(event.id || event.name);
-          if (run) run.className = "run " + (event.ok ? "done" : "failed");
-        } else if (event.type === "cost") {
-          if (!liveCost) {
-            liveCost = document.createElement("div");
-            liveCost.className = "cost";
-            box.appendChild(liveCost);
-          }
-          liveCost.textContent =
-            `${money(event.run.cost_usd)}  ·  running`;
+        } else if (ev.type === "tool_end") {
+          const run = runs.get(ev.id || ev.name);
+          if (run) run.className = "run " + (ev.ok ? "done" : "failed");
+        } else if (ev.type === "render_request") {
+          const run = [...runs.values()].pop();
+          renderForAgent(ev.request_id, ev.panel, run);
+        } else if (ev.type === "artwork_update" || ev.type === "project_update") {
+          changed = true;
+          refreshProjectQuietly();
+        } else if (ev.type === "cost") {
+          if (!liveCost) { liveCost = document.createElement("div"); liveCost.className = "cost"; }
+          liveCost.textContent = `${money(ev.run.cost_usd)}  ·  running`;
+          box.appendChild(liveCost);
           box.appendChild(pending);
-        } else if (event.type === "error") {
+        } else if (ev.type === "error") {
           pending.remove();
-          box.appendChild(bubble("fail", event.text));
-        } else if (event.type === "done") {
-          if (liveCost && event.run) liveCost.replaceWith(costLine(event.run));
-          if (event.total) {
-            state.project.usage = event.total;
-            paintMeter();
-          }
+          box.appendChild(bubble("fail", ev.text));
+        } else if (ev.type === "done") {
+          if (liveCost && ev.run) liveCost.replaceWith(costLine(ev.run));
+          if (ev.total) { state.project.usage = ev.total; paintMeter(); }
+        } else if (ev.type === "end") {
+          finished = true;
+          reader.cancel().catch(() => {});
         }
         box.scrollTop = box.scrollHeight;
       }
@@ -959,9 +1195,56 @@ async function send(event) {
   } finally {
     pending.remove();
     setBusy(false);
-    await openProject(state.projectId);
+    // Keep the conversation as it played out (steps, previews) and only bring
+    // everything else up to date.
+    await syncProject();
+    if (changed) toast("Design updated.");
     $("input").focus();
   }
+}
+
+async function syncProject() {
+  try {
+    const { project } = await api(`/api/projects/${state.projectId}`);
+    state.project = project;
+    paintMeter();
+    paintStructure();
+    paintLayers();
+    paintAssets();
+    paintGallery();
+    refreshView();
+    await refreshProjectList();
+  } catch (err) { toast(err.message, true); }
+}
+
+async function refreshProjectList() {
+  const { projects } = await api("/api/projects");
+  const sel = $("projectSelect");
+  const current = state.projectId;
+  sel.innerHTML = "";
+  for (const p of projects) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.box_type ? `${p.name} — ${state.boxTypes[p.box_type]?.short || p.box_type}` : p.name;
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+/* While the agent works, keep the preview in step without reloading the chat. */
+let quietTimer = null;
+function refreshProjectQuietly() {
+  clearTimeout(quietTimer);
+  quietTimer = setTimeout(async () => {
+    try {
+      const { project } = await api(`/api/projects/${state.projectId}`);
+      const usage = state.project?.usage;
+      state.project = { ...project, usage: usage || project.usage };
+      paintStructure();
+      paintLayers();
+      refreshView();
+    } catch { /* the final reload will catch up */ }
+  }, 350);
 }
 
 function setBusy(busy) {
@@ -970,11 +1253,10 @@ function setBusy(busy) {
   $("send").textContent = busy ? "Working" : "Send";
 }
 
-/* wiring -------------------------------------------------------------- */
+/* wiring ----------------------------------------------------------------- */
 
 function wire() {
   $("composer").addEventListener("submit", send);
-
   const input = $("input");
   input.addEventListener("input", () => {
     input.style.height = "auto";
@@ -986,7 +1268,6 @@ function wire() {
 
   $("projectSelect").addEventListener("change", (e) => openProject(e.target.value));
   $("newProject").addEventListener("click", newProject);
-
   $("deleteProject").addEventListener("click", async () => {
     if (!state.projectId) return;
     if (!confirm(`Delete "${state.project?.name}" and all its files? This cannot be undone.`)) return;
@@ -1038,8 +1319,7 @@ function wire() {
   });
 
   $("doExport").addEventListener("click", async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = "Generating";
+    e.target.disabled = true; e.target.textContent = "Generating";
     try {
       await api(`/api/projects/${state.projectId}/export`, { method: "POST" });
       await loadExports();
@@ -1048,35 +1328,19 @@ function wire() {
     finally { e.target.disabled = false; e.target.textContent = "Generate files"; }
   });
 
+  $("camBar").addEventListener("click", (e) => {
+    const name = e.target.closest("button")?.dataset.cam;
+    if (name) { state.three?.view(name); $("spin").textContent = "Spin"; }
+  });
   $("shoot").addEventListener("click", shoot);
   $("photoNotes").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); shoot(); }
   });
   $("toPhoto").addEventListener("click", () => {
     document.querySelector('.seg[data-view="photo"]').click();
-    if ((state.scenes || []).some((s) => s.id === state.surface)) {
-      state.scene = state.surface;
-      paintScenes();
-    }
+    if ((state.scenes || []).some((s) => s.id === state.surface)) { state.scene = state.surface; paintScenes(); }
     shoot();
   });
-
-  $("probeBtn").addEventListener("click", async (e) => {
-    const out = $("probeResult");
-    e.target.disabled = true;
-    out.textContent = "Checking…";
-    try {
-      const data = await api("/api/settings/probe", { method: "POST" });
-      state.config = data.config || state.config;
-      out.textContent = data.message || (data.ok ? "Connected." : "Not working.");
-      out.style.color = data.ok ? "var(--good)" : "var(--bad)";
-      paintScenes();
-    } catch (err) {
-      out.textContent = err.message;
-      out.style.color = "var(--bad)";
-    } finally { e.target.disabled = false; }
-  });
-
   $("spin").addEventListener("click", (e) => {
     e.target.textContent = state.three?.toggleSpin() ? "Stop" : "Spin";
   });
@@ -1086,6 +1350,14 @@ function wire() {
     a.href = state.three.snapshot();
     a.download = (state.project?.name || "mockup").replace(/\W+/g, "-").toLowerCase() + ".png";
     a.click();
+  });
+
+  $("editorClose").addEventListener("click", closeEditor);
+  $("editorSave").addEventListener("click", saveEditor);
+  $("editorDelete").addEventListener("click", deleteFromEditor);
+  $("layerEditor").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeEditor();
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEditor();
   });
 
   $("clearChat").addEventListener("click", async () => {
@@ -1099,40 +1371,65 @@ function wire() {
   });
 
   $("openSettings").addEventListener("click", () => {
-    $("anthropicKey").value = "";
-    $("geminiKey").value = "";
-    $("openaiKey").value = "";
+    $("anthropicKey").value = ""; $("geminiKey").value = ""; $("openaiKey").value = "";
     $("modelSelect").value = state.config.model;
+    $("effortSelect").value = state.config.effort || "high";
+    $("probeResult").textContent = "";
     paintPrice();
+    paintKeyState();
     $("settings").showModal();
   });
 
   document.querySelectorAll(".clear").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        const data = await api("/api/settings", {
-          method: "POST", body: JSON.stringify({ [btn.dataset.clear]: "" }),
-        });
+        const data = await api("/api/settings", { method: "POST", body: JSON.stringify({ [btn.dataset.clear]: "" }) });
         state.config = data.config;
+        paintKeyState();
+        paintScenes();
         toast("Key removed.");
       } catch (err) { toast(err.message, true); }
     });
   });
 
+  $("probeBtn").addEventListener("click", async (e) => {
+    const out = $("probeResult");
+    const pendingKey = $("geminiKey").value.trim();
+    e.target.disabled = true;
+    out.style.color = "";
+    out.textContent = "Checking…";
+    try {
+      if (pendingKey) {
+        const saved = await api("/api/settings", { method: "POST", body: JSON.stringify({ GEMINI_API_KEY: pendingKey }) });
+        state.config = saved.config;
+        $("geminiKey").value = "";
+      }
+      const data = await api("/api/settings/probe", { method: "POST" });
+      state.config = data.config || state.config;
+      out.textContent = data.message || (data.ok ? "Connected." : "Not working.");
+      out.style.color = data.ok ? "var(--good)" : "var(--bad)";
+      paintKeyState();
+      paintScenes();
+    } catch (err) {
+      out.textContent = err.message;
+      out.style.color = "var(--bad)";
+    } finally { e.target.disabled = false; }
+  });
+
   $("saveSettings").addEventListener("click", async (e) => {
     e.preventDefault();
-    const payload = { ANTHROPIC_MODEL: $("modelSelect").value };
-    for (const [key, el] of [["ANTHROPIC_API_KEY", "anthropicKey"],
-                             ["GEMINI_API_KEY", "geminiKey"],
+    const payload = { ANTHROPIC_MODEL: $("modelSelect").value,
+                      ANTHROPIC_EFFORT: $("effortSelect").value };
+    for (const [key, el] of [["ANTHROPIC_API_KEY", "anthropicKey"], ["GEMINI_API_KEY", "geminiKey"],
                              ["OPENAI_API_KEY", "openaiKey"]]) {
       const value = $(el).value.trim();
       if (value) payload[key] = value;
     }
     try {
-      const data = await api("/api/settings", { method: "POST",
-                                                body: JSON.stringify(payload) });
+      const data = await api("/api/settings", { method: "POST", body: JSON.stringify(payload) });
       state.config = data.config;
       paintKeyState();
+      paintScenes();
       $("settings").close();
       toast("Settings saved.");
       if (!state.project) await loadProjects();
@@ -1144,18 +1441,13 @@ function wire() {
     if (!items.length) return;
     for (const item of items) {
       const file = item.getAsFile();
-      if (file) state.pending.push({ name: file.name || "pasted.png",
-                                     data: await readFile(file) });
+      if (file) state.pending.push({ name: file.name || "pasted.png", data: await readFile(file) });
     }
     paintAttachments();
   });
-}
 
-function readFile(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(file);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("layerEditor").hidden) closeEditor();
   });
 }
 

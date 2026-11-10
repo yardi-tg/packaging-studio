@@ -12,10 +12,8 @@
 <header class="rail">
   <div class="mark">
     <svg width="17" height="19" viewBox="0 0 17 19" aria-hidden="true">
-      <rect x="1" y="1" width="15" height="17" rx="1.5" fill="none"
-            stroke="currentColor" stroke-width="1.5"/>
-      <path d="M1 6.5h15" stroke="currentColor" stroke-width="1.2"
-            stroke-dasharray="2.4 2"/>
+      <rect x="1" y="1" width="15" height="17" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M1 6.5h15" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2.4 2"/>
     </svg>
     <span>Packaging Studio</span>
   </div>
@@ -53,8 +51,7 @@
       <label for="fileInput" class="clip" title="Attach a reference image">
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
           <path d="M20 11.5V7a3.6 3.6 0 0 0-7.2 0v9.2a2.2 2.2 0 0 0 4.4 0V9"
-                fill="none" stroke="currentColor" stroke-width="1.7"
-                stroke-linecap="round"/>
+                fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
         </svg>
         <span class="sr-only">Attach image</span>
       </label>
@@ -90,16 +87,22 @@
           <button id="shot" class="btn quiet sm">Save image</button>
           <button id="toPhoto" class="btn primary sm">Make it a photo</button>
         </div>
-        <p class="scene-hint">Drag to turn, scroll to zoom</p>
+        <div class="cam-bar" id="camBar">
+          <button data-cam="front">Front</button>
+          <button data-cam="three">¾ view</button>
+          <button data-cam="side">Side</button>
+          <button data-cam="top">Top</button>
+          <button data-cam="back">Back</button>
+        </div>
       </div>
 
       <div id="view-photo" class="view">
         <div class="photo">
           <div class="photo-lead">
             <h3>Photos</h3>
-            <p id="photoIntro">Pick a setting. The 3D render is sent to your
-              image model, which builds a real scene around it and keeps the
-              package exactly as designed.</p>
+            <p id="photoIntro">Pick a setting. The 3D render goes to your image
+              model, which builds a real scene around it and keeps the package
+              exactly as designed.</p>
             <div class="scenes" id="sceneCards"></div>
             <div class="photo-run">
               <input id="photoNotes" type="text"
@@ -124,8 +127,9 @@
         <div class="export">
           <div class="export-lead">
             <h3>Production files</h3>
-            <p>Writes the dieline, the artwork, each face on its own, and a
-               technical spec sheet into this project's folder.</p>
+            <p>Writes the dieline as PDF and SVG with spot-colour knife lines, the
+               artwork with bleed, each face on its own, and a spec sheet for your
+               printer into this project's folder.</p>
             <button id="doExport" class="btn primary">Generate files</button>
           </div>
           <ul id="exportList" class="files"></ul>
@@ -137,17 +141,15 @@
           <g fill="none" stroke-linejoin="round">
             <path d="M24 26 L24 70 M44 26 L44 70 M76 26 L76 70 M96 26 L96 70"
                   stroke="#9fb4d6" stroke-width="1" stroke-dasharray="4 3"/>
-            <path d="M12 30 L24 26 L24 70 L12 66 Z
-                     M24 26 H44 V70 H24 Z M44 26 H76 V70 H44 Z
-                     M76 26 H96 V70 H76 Z M96 26 H116 V70 H96 Z"
-                  stroke="#d2607a" stroke-width="1.3"/>
+            <path d="M12 30 L24 26 L24 70 L12 66 Z M24 26 H44 V70 H24 Z M44 26 H76 V70 H44 Z
+                     M76 26 H96 V70 H76 Z M96 26 H116 V70 H96 Z" stroke="#d2607a" stroke-width="1.3"/>
             <path d="M44 26 Q46 12 60 12 Q74 12 76 26" stroke="#d2607a" stroke-width="1.3"/>
             <path d="M44 70 Q46 84 60 84 Q74 84 76 70" stroke="#d2607a" stroke-width="1.3"/>
           </g>
         </svg>
         <h3>No structure yet</h3>
-        <p>Tell the designer about your product. Once the style and dimensions
-           are settled, the preview appears here.</p>
+        <p>Tell the designer about your product. Once the style and size are
+           settled, the preview appears here.</p>
       </div>
     </div>
   </section>
@@ -181,6 +183,19 @@
   </aside>
 </main>
 
+<!-- layer editor ------------------------------------------------------ -->
+<div id="layerEditor" class="editor" hidden role="dialog" aria-label="Edit layer">
+  <div class="editor-head">
+    <b id="editorTitle">Layer</b>
+    <button id="editorClose" class="btn quiet sm" aria-label="Close">✕</button>
+  </div>
+  <div id="editorFields"></div>
+  <div class="editor-actions">
+    <button id="editorDelete" class="btn quiet sm danger">Delete layer</button>
+    <button id="editorSave" class="btn primary sm">Save</button>
+  </div>
+</div>
+
 <!-- settings --------------------------------------------------------- -->
 <dialog id="settings" class="sheet">
   <form method="dialog" class="sheet-body">
@@ -188,11 +203,10 @@
 
     <label class="field" for="anthropicKey">
       <span>Anthropic API key <em id="anthropicState"></em></span>
-      <input id="anthropicKey" type="password" placeholder="sk-ant-…"
-             autocomplete="off" spellcheck="false">
+      <input id="anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
     </label>
-    <p class="note">From console.anthropic.com. It is written to the
-       <code>.env</code> file next to the program and only ever sent to Anthropic.</p>
+    <p class="note">From console.anthropic.com. Written to the <code>.env</code> file
+       next to the program and only ever sent to Anthropic.</p>
 
     <label class="field" for="modelSelect">
       <span>Model</span>
@@ -200,17 +214,25 @@
     </label>
     <p class="note" id="priceNote"></p>
 
+    <label class="field" for="effortSelect">
+      <span>How hard it thinks</span>
+      <select id="effortSelect">
+        <option value="medium">Medium — quicker, cheaper</option>
+        <option value="high">High — recommended for design</option>
+        <option value="max">Max — slowest, most careful</option>
+      </select>
+    </label>
+
     <div class="split"></div>
 
     <label class="field" for="geminiKey">
-      <span>Google Gemini key
+      <span>Google Gemini key <em id="geminiState"></em>
         <button type="button" class="clear" data-clear="GEMINI_API_KEY">Remove</button></span>
-      <input id="geminiKey" type="password" placeholder="paste your key"
-             autocomplete="off" spellcheck="false">
+      <input id="geminiKey" type="password" placeholder="paste your key" autocomplete="off" spellcheck="false">
     </label>
-    <p class="note">Needed for the Photos tab: it puts your package into real
-       settings — held in a hand, on a marble counter, on a shelf. Claude cannot
-       make photographs. Free tier available at aistudio.google.com.</p>
+    <p class="note">For the Photos tab: puts your package into real settings — held in
+       a hand, on a marble counter, on a shelf. Claude cannot make photographs. Free
+       tier at aistudio.google.com.</p>
 
     <div class="probe-row">
       <button type="button" id="probeBtn" class="btn">Test connection</button>
@@ -219,11 +241,10 @@
 
     <details class="extra">
       <summary>Use OpenAI instead</summary>
-      <p class="note">Works for generating motifs, but not for the Photos tab —
-         that needs a model which edits the render rather than inventing a new box.</p>
+      <p class="note">Generates motifs, but cannot do the Photos tab: that needs a model
+         which edits the render rather than inventing a new box.</p>
       <label class="field" for="openaiKey">
-        <span>OpenAI key
-          <button type="button" class="clear" data-clear="OPENAI_API_KEY">Remove</button></span>
+        <span>OpenAI key <button type="button" class="clear" data-clear="OPENAI_API_KEY">Remove</button></span>
         <input id="openaiKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false">
       </label>
     </details>

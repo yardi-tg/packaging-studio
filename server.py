@@ -34,10 +34,12 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import artwork, config, dieline, fonts, imagegen, pdfwriter, registry, store
+from core import artwork, config, dieline, fonts, imagegen, pdfwriter, registry, store, visual
 
 MAX_BODY = 20 * 1024 * 1024
-SETTING_KEYS = ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
+_RUNNING: set = set()
+_RUN_LOCK = threading.Lock()
+SETTING_KEYS = ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "ANTHROPIC_EFFORT",
                 "GEMINI_API_KEY", "OPENAI_API_KEY")
 
 
@@ -124,14 +126,7 @@ class Handler(BaseHTTPRequestHandler):
                 "config": config.status(),
                 "agents": registry.catalog(),
                 "box_types": dieline.BOX_TYPES,
-                "models": [
-                    {"id": "claude-opus-4-5-20251101", "label": "Opus 4.5",
-                     "note": "best design judgement, priciest"},
-                    {"id": "claude-sonnet-4-5-20250929", "label": "Sonnet 4.5",
-                     "note": "good balance, fine for everyday work"},
-                    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",
-                     "note": "fast and cheap, good for small fixes"},
-                ],
+                "models": config.MODEL_CHOICES,
                 "pricing": config.MODEL_PRICING,
                 "scenes": imagegen.scene_catalog(),
                 "fonts": {k: {"name": v[0], "hint": v[2]}
@@ -208,7 +203,8 @@ class Handler(BaseHTTPRequestHandler):
             geo = next((p for p in dl["panels"] if p["id"] == panel_id), None)
             if not geo:
                 return self._error("Unknown panel", 404)
-            svg = artwork.render_panel_svg(spec, geo, assets, font_css=css)
+            svg = artwork.render_panel_svg(spec, geo, assets,
+                                           font_css=fonts.embed_css(spec, [geo["id"]]))
         elif mode == "print":
             svg = artwork.full_svg(spec, dl, assets, with_dieline=False, font_css=css)
         else:
@@ -230,11 +226,13 @@ class Handler(BaseHTTPRequestHandler):
         for geo in dl["panels"]:
             if not geo.get("printable", True):
                 continue
-            svg = artwork.render_panel_svg(spec, geo, assets, scale=10, font_css=css)
+            svg = artwork.render_panel_svg(spec, geo, assets, scale=10,
+                                           font_css=fonts.embed_css(spec, [geo["id"]]))
             encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+            w, h = artwork.design_size(geo)
             out[geo["id"]] = {
                 "url": f"data:image/svg+xml;base64,{encoded}",
-                "w": geo["w"], "h": geo["h"], "label": geo["label"],
+                "w": w, "h": h, "label": geo["label"],
             }
         self._json({"textures": out, "dims": dl["dims"], "box_type": dl["box_type"]})
 
@@ -286,6 +284,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._export(project)
             if action == "photoshoot":
                 return self._photoshoot(project)
+            if action == "render_result":
+                body = self._body()
+                data = body.get("png") or ""
+                if "," in data:
+                    data = data.split(",", 1)[1]
+                try:
+                    png = base64.b64decode(data)
+                except Exception:
+                    png = b""
+                ok = bool(png) and visual.deliver(body.get("request_id", ""), png,
+                                                  body.get("media_type") or "image/png")
+                return self._json({"ok": ok})
             if action == "clear":
                 project["messages"] = []
                 store.save(project)
@@ -329,12 +339,20 @@ class Handler(BaseHTTPRequestHandler):
         if len(png) < 1000:
             return self._error("No usable render was supplied. Open the 3D tab "
                                "first so there is something to photograph.", 400)
+        front = body.get("front") or ""
+        if "," in front:
+            front = front.split(",", 1)[1]
+        try:
+            front_png = base64.b64decode(front) if front else None
+        except Exception:
+            front_png = None
         try:
             asset = imagegen.photoshoot(
                 project, png,
                 scene=body.get("scene") or "studio",
                 notes=body.get("notes") or "",
                 aspect=body.get("aspect") or "1:1",
+                front_png=front_png if front_png and len(front_png) > 1000 else None,
             )
         except RuntimeError as exc:
             return self._error(str(exc), 502)
@@ -396,7 +414,8 @@ class Handler(BaseHTTPRequestHandler):
             if geo.get("printable", True):
                 store.write_export(
                     project["id"], f"{base}-panel-{geo['id']}.svg",
-                    artwork.render_panel_svg(spec, geo, assets, font_css=css))
+                    artwork.render_panel_svg(spec, geo, assets,
+                                             font_css=fonts.embed_css(spec, [geo["id"]])))
         store.write_export(project["id"], "READ-ME-FIRST.txt",
                            _export_readme(project, dl))
         store.save(project)
@@ -405,6 +424,20 @@ class Handler(BaseHTTPRequestHandler):
     # -- chat, streamed as server-sent events -------------------------------
 
     def _chat(self, project):
+        # One conversation turn per project at a time. Two overlapping runs
+        # would interleave their messages and corrupt the history.
+        with _RUN_LOCK:
+            if project["id"] in _RUNNING:
+                return self._error("The designer is still working on this project. "
+                                   "Wait for it to finish.", 409)
+            _RUNNING.add(project["id"])
+        try:
+            return self._chat_inner(project)
+        finally:
+            with _RUN_LOCK:
+                _RUNNING.discard(project["id"])
+
+    def _chat_inner(self, project):
         body = self._body()
         text = (body.get("text") or "").strip()
         asset_ids = body.get("asset_ids") or []
@@ -444,9 +477,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        # The stream has no length, so it must end by closing the connection.
+        # Announcing keep-alive here would leave the browser waiting forever.
+        self.send_header("Connection", "close")
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
+        self.close_connection = True
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -559,6 +595,7 @@ def _free_port(preferred: int) -> int:
 
 def main():
     config.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    upgraded = config.migrate()
     port = _free_port(config.get_int("PORT"))
     url = f"http://localhost:{port}"
     status = config.status()
@@ -572,6 +609,8 @@ def main():
     print(f"  Projects in:      {config.PROJECTS_DIR}")
     if not status["anthropic"]:
         print("\n  No API key yet. Add one under Settings, top right.")
+    if upgraded:
+        print(f"\n  Model upgraded to {upgraded}.")
     print("\n  Press Ctrl+C to stop.\n")
 
     if "--no-browser" not in sys.argv:

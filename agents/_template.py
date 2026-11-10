@@ -20,9 +20,12 @@ TO SWITCH IT ON
 
 WHAT AN AGENT NEEDS
 -------------------
-  system_prompt(project)  Who it is and how it works. This is where the real
+  system_prompt()         Who it is and how it works. This is where the real
                           quality lives. Be specific, give it rules, describe
-                          the workflow you want.
+                          the workflow you want. Keep it FIXED: no project data
+                          in here (see core/agent.py for why).
+  state_block(project)    What the project looks like right now. Attached to
+                          every new message, so it is always current.
   tools()                 What it can do. Each tool is a Python function with a
                           JSON schema. The function receives the project, the
                           parameters and `emit` (for live updates to the
@@ -69,21 +72,22 @@ class Template(Agent):
     description = "Example. Copy it, rebuild it, register it in registry.py."
     greeting = "What should I start with?"
 
-    def system_prompt(self, project: dict) -> str:
-        brief = project.get("brief") or {}
-        return f"""You are a specialist working inside a packaging studio.
+    def system_prompt(self) -> str:
+        return """You are a specialist working inside a packaging studio.
 
 Reply in whatever language the user writes in. Be brief. Make decisions rather
 than asking a lot of questions.
 
-State of this project:
-  Product:   {brief.get('product_name') or 'not known yet'}
-  Brand:     {brief.get('brand') or 'not known yet'}
-  Structure: {(project.get('dieline') or {}).get('box_name') or 'none yet'}
-
-read_project shows you what the other agents have already worked out.
+Each user message carries a <project_state> block with the current brief and
+structure. read_project shows what the other agents have worked out in detail.
 remember stores your results so they are not lost.
 """
+
+    def state_block(self, project: dict) -> str:
+        brief = project.get("brief") or {}
+        return (f"Product: {brief.get('product_name') or 'not known yet'}\n"
+                f"Brand: {brief.get('brand') or 'not known yet'}\n"
+                f"Structure: {(project.get('dieline') or {}).get('box_name') or 'none yet'}")
 
     def tools(self) -> list:
         return [

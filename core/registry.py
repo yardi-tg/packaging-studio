@@ -31,6 +31,7 @@ def catalog() -> list:
             "description": agent.description,
             "icon": agent.icon,
             "greeting": agent.greeting,
+            "starters": list(getattr(agent, "starters", []) or []),
         }
         for agent in AGENTS.values()
     ]

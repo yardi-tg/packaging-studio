@@ -70,20 +70,29 @@ def _load_family(family: str) -> str:
             url_match = re.search(r"url\((https://[^)]+\.woff2)\)", block)
             if not url_match:
                 continue
-            # Latin subset only, otherwise this balloons
+            # Basic Latin always; Ge'ez script for the Ethiopic families.
+            # Everything else (Cyrillic, Vietnamese, ...) would only balloon
+            # the file.
             unicode_range = re.search(r"unicode-range:\s*([^;]+);", block)
-            if unicode_range and "U+0000-00FF" not in unicode_range.group(1):
+            ranges = unicode_range.group(1) if unicode_range else ""
+            wanted = (not ranges or "U+0000-00FF" in ranges
+                      or ("Ethiopic" in family and "U+12" in ranges))
+            if not wanted:
                 continue
             data = _fetch(url_match.group(1), timeout=30)
-            if len(data) > 400_000:
+            if len(data) > 900_000:
                 continue
             encoded = base64.b64encode(data).decode("ascii")
             weight = re.search(r"font-weight:\s*([^;]+);", block)
             style = re.search(r"font-style:\s*([^;]+);", block)
+            # The unicode-range has to travel with the face, or two subsets of
+            # the same weight overwrite each other.
+            range_rule = f"unicode-range:{ranges.strip()};" if ranges else ""
             blocks.append(
                 f"@font-face{{font-family:'{family}';"
                 f"font-style:{style.group(1).strip() if style else 'normal'};"
                 f"font-weight:{weight.group(1).strip() if weight else '400'};"
+                f"{range_rule}"
                 f"src:url(data:font/woff2;base64,{encoded}) format('woff2');}}"
             )
         result = "".join(blocks)
@@ -110,26 +119,36 @@ def css_for(families) -> str:
     return "".join(out)
 
 
-def families_in_spec(spec: dict) -> list:
-    """Which font families does this artwork actually use?"""
+def families_in_spec(spec: dict, panel_ids=None) -> list:
+    """Which font families does this artwork (or these panels of it) use?"""
     fonts = (spec or {}).get("fonts") or {}
     used = set()
-    for panel in ((spec or {}).get("panels") or {}).values():
+    panels = (spec or {}).get("panels") or {}
+    if panel_ids is not None:
+        panels = {k: v for k, v in panels.items() if k in set(panel_ids)}
+    for panel in panels.values():
         for layer in panel.get("layers") or []:
-            if layer.get("type") != "text":
+            kind = layer.get("type")
+            if kind in ("text", "circle_text"):
+                key = layer.get("font", "body")
+            elif kind == "barcode":
+                key = "mono"
+            else:
                 continue
-            key = layer.get("font", "body")
-            resolved = fonts.get(key, key)
+            resolved = fonts.get(key, key if kind != "barcode" else "ibmmono")
             family, _ = artwork.font_stack(resolved)
             used.add(family)
-    if not used:
+    if not used and panel_ids is None:
         for key in fonts.values():
             used.add(artwork.font_stack(key)[0])
     return sorted(used)
 
 
-def embed_css(spec: dict) -> str:
-    families = families_in_spec(spec)
+def embed_css(spec: dict, panel_ids=None) -> str:
+    """@font-face rules for the families in use. Pass panel_ids to embed only
+    what one face needs: a lid with a single word should not carry a 500 KB
+    Ethiopic font because the side panel uses it."""
+    families = families_in_spec(spec, panel_ids)
     if not families:
         return ""
     return css_for(families)

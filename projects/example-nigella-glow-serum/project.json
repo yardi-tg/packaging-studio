@@ -2,13 +2,14 @@
   "id": "example-nigella-glow-serum",
   "name": "Example: Nigella Glow Serum",
   "agent": "packaging_designer",
-  "created": "2026-11-10T02:09:14",
-  "updated": "2026-11-10T02:14:26",
+  "created": "2026-11-10T03:07:12",
+  "updated": "2026-11-10T06:59:27",
   "brief": {
     "product_name": "Nigella Glow Serum",
     "brand": "Habesha Botanics",
     "category": "Face serum",
     "volume": "30 ml",
+    "container": "30 ml dropper bottle, 33 x 105 mm",
     "market": "Ethiopia",
     "languages": [
       "English",
@@ -23,320 +24,762 @@
     "box_name": "Folding carton, straight tuck end",
     "box_short": "Straight Tuck End (STE)",
     "dims": {
-      "width": 50.0,
-      "depth": 40.0,
-      "height": 120.0
+      "width": 40.0,
+      "depth": 36.0,
+      "height": 112.0
     },
     "bleed": 3.0,
     "sheet": {
-      "width": 221.2,
-      "height": 225.0
+      "width": 214.3,
+      "height": 268.8
+    },
+    "blank": {
+      "width": 164.3,
+      "height": 218.8,
+      "x": 24.0,
+      "y": 14.0
     },
     "cut": [
       [
         [
-          27.2,
-          52.5
+          36.3,
+          67.4
         ],
         [
-          14.0,
-          55.5
+          24.0,
+          70.4
         ],
         [
-          14.0,
-          169.5
+          24.0,
+          176.4
         ],
         [
-          27.2,
-          172.5
+          36.3,
+          179.4
         ]
       ],
       [
         [
-          207.2,
-          52.5
+          188.3,
+          67.4
         ],
         [
-          207.2,
-          172.5
+          188.3,
+          179.4
         ]
       ],
       [
         [
-          27.2,
-          52.5
+          36.3,
+          67.4
         ],
         [
-          29.7,
-          20.0
+          36.3,
+          31.4
+        ]
+      ],
+      [
+        [
+          76.3,
+          67.4
         ],
         [
-          32.7,
+          76.3,
+          31.4
+        ]
+      ],
+      [
+        [
+          36.3,
+          31.4
+        ],
+        [
+          38.7,
+          31.4
+        ]
+      ],
+      [
+        [
+          73.9,
+          31.4
+        ],
+        [
+          76.3,
+          31.4
+        ]
+      ],
+      [
+        [
+          36.3,
+          31.4
+        ],
+        [
+          37.05,
+          30.2
+        ],
+        [
+          37.05,
+          19.0
+        ],
+        [
+          37.18,
+          17.89
+        ],
+        [
+          37.55,
+          16.83
+        ],
+        [
+          38.14,
+          15.88
+        ],
+        [
+          38.93,
+          15.09
+        ],
+        [
+          39.88,
+          14.5
+        ],
+        [
+          40.94,
+          14.13
+        ],
+        [
+          42.05,
           14.0
         ],
         [
-          71.7,
+          70.55,
           14.0
         ],
         [
-          74.7,
-          20.0
+          71.66,
+          14.13
         ],
         [
-          77.2,
-          52.5
-        ]
-      ],
-      [
-        [
-          77.2,
-          52.5
+          72.72,
+          14.5
         ],
         [
-          77.2,
+          73.67,
+          15.09
+        ],
+        [
+          74.46,
+          15.88
+        ],
+        [
+          75.05,
+          16.83
+        ],
+        [
+          75.42,
+          17.89
+        ],
+        [
+          75.55,
           19.0
         ],
         [
-          80.7,
-          15.5
+          75.55,
+          30.2
         ],
         [
-          113.7,
-          15.5
-        ],
-        [
-          117.2,
-          19.0
-        ],
-        [
-          117.2,
-          52.5
+          76.3,
+          31.4
         ]
       ],
       [
         [
-          167.2,
-          52.5
+          76.3,
+          67.4
         ],
         [
-          167.2,
-          19.0
+          77.5,
+          66.2
         ],
         [
-          170.7,
-          15.5
+          77.5,
+          53.4
         ],
         [
-          203.7,
-          15.5
+          77.6,
+          52.51
         ],
         [
-          207.2,
-          19.0
+          77.9,
+          51.66
         ],
         [
-          207.2,
-          52.5
+          78.37,
+          50.91
+        ],
+        [
+          79.01,
+          50.27
+        ],
+        [
+          79.76,
+          49.8
+        ],
+        [
+          80.61,
+          49.5
+        ],
+        [
+          81.5,
+          49.4
+        ],
+        [
+          107.1,
+          49.4
+        ],
+        [
+          107.99,
+          49.5
+        ],
+        [
+          108.84,
+          49.8
+        ],
+        [
+          109.59,
+          50.27
+        ],
+        [
+          110.23,
+          50.91
+        ],
+        [
+          110.7,
+          51.66
+        ],
+        [
+          111.0,
+          52.51
+        ],
+        [
+          111.1,
+          53.4
+        ],
+        [
+          111.1,
+          66.2
+        ],
+        [
+          112.3,
+          67.4
         ]
       ],
       [
         [
-          117.2,
-          52.5
+          152.3,
+          67.4
         ],
         [
-          167.2,
-          52.5
+          153.5,
+          66.2
+        ],
+        [
+          153.5,
+          53.4
+        ],
+        [
+          153.6,
+          52.51
+        ],
+        [
+          153.9,
+          51.66
+        ],
+        [
+          154.37,
+          50.91
+        ],
+        [
+          155.01,
+          50.27
+        ],
+        [
+          155.76,
+          49.8
+        ],
+        [
+          156.61,
+          49.5
+        ],
+        [
+          157.5,
+          49.4
+        ],
+        [
+          183.1,
+          49.4
+        ],
+        [
+          183.99,
+          49.5
+        ],
+        [
+          184.84,
+          49.8
+        ],
+        [
+          185.59,
+          50.27
+        ],
+        [
+          186.23,
+          50.91
+        ],
+        [
+          186.7,
+          51.66
+        ],
+        [
+          187.0,
+          52.51
+        ],
+        [
+          187.1,
+          53.4
+        ],
+        [
+          187.1,
+          66.2
+        ],
+        [
+          188.3,
+          67.4
         ]
       ],
       [
         [
-          27.2,
-          172.5
+          112.3,
+          67.4
         ],
         [
-          29.7,
-          205.0
-        ],
-        [
-          32.7,
-          211.0
-        ],
-        [
-          71.7,
-          211.0
-        ],
-        [
-          74.7,
-          205.0
-        ],
-        [
-          77.2,
-          172.5
+          152.3,
+          67.4
         ]
       ],
       [
         [
-          77.2,
-          172.5
+          36.3,
+          179.4
         ],
         [
-          77.2,
-          206.0
-        ],
-        [
-          80.7,
-          209.5
-        ],
-        [
-          113.7,
-          209.5
-        ],
-        [
-          117.2,
-          206.0
-        ],
-        [
-          117.2,
-          172.5
+          36.3,
+          215.4
         ]
       ],
       [
         [
-          167.2,
-          172.5
+          76.3,
+          179.4
         ],
         [
-          167.2,
-          206.0
-        ],
-        [
-          170.7,
-          209.5
-        ],
-        [
-          203.7,
-          209.5
-        ],
-        [
-          207.2,
-          206.0
-        ],
-        [
-          207.2,
-          172.5
+          76.3,
+          215.4
         ]
       ],
       [
         [
-          117.2,
-          172.5
+          36.3,
+          215.4
         ],
         [
-          167.2,
-          172.5
+          38.7,
+          215.4
+        ]
+      ],
+      [
+        [
+          73.9,
+          215.4
+        ],
+        [
+          76.3,
+          215.4
+        ]
+      ],
+      [
+        [
+          36.3,
+          215.4
+        ],
+        [
+          37.05,
+          216.6
+        ],
+        [
+          37.05,
+          227.8
+        ],
+        [
+          37.18,
+          228.91
+        ],
+        [
+          37.55,
+          229.97
+        ],
+        [
+          38.14,
+          230.92
+        ],
+        [
+          38.93,
+          231.71
+        ],
+        [
+          39.88,
+          232.3
+        ],
+        [
+          40.94,
+          232.67
+        ],
+        [
+          42.05,
+          232.8
+        ],
+        [
+          70.55,
+          232.8
+        ],
+        [
+          71.66,
+          232.67
+        ],
+        [
+          72.72,
+          232.3
+        ],
+        [
+          73.67,
+          231.71
+        ],
+        [
+          74.46,
+          230.92
+        ],
+        [
+          75.05,
+          229.97
+        ],
+        [
+          75.42,
+          228.91
+        ],
+        [
+          75.55,
+          227.8
+        ],
+        [
+          75.55,
+          216.6
+        ],
+        [
+          76.3,
+          215.4
+        ]
+      ],
+      [
+        [
+          76.3,
+          179.4
+        ],
+        [
+          77.5,
+          180.6
+        ],
+        [
+          77.5,
+          193.4
+        ],
+        [
+          77.6,
+          194.29
+        ],
+        [
+          77.9,
+          195.14
+        ],
+        [
+          78.37,
+          195.89
+        ],
+        [
+          79.01,
+          196.53
+        ],
+        [
+          79.76,
+          197.0
+        ],
+        [
+          80.61,
+          197.3
+        ],
+        [
+          81.5,
+          197.4
+        ],
+        [
+          107.1,
+          197.4
+        ],
+        [
+          107.99,
+          197.3
+        ],
+        [
+          108.84,
+          197.0
+        ],
+        [
+          109.59,
+          196.53
+        ],
+        [
+          110.23,
+          195.89
+        ],
+        [
+          110.7,
+          195.14
+        ],
+        [
+          111.0,
+          194.29
+        ],
+        [
+          111.1,
+          193.4
+        ],
+        [
+          111.1,
+          180.6
+        ],
+        [
+          112.3,
+          179.4
+        ]
+      ],
+      [
+        [
+          152.3,
+          179.4
+        ],
+        [
+          153.5,
+          180.6
+        ],
+        [
+          153.5,
+          193.4
+        ],
+        [
+          153.6,
+          194.29
+        ],
+        [
+          153.9,
+          195.14
+        ],
+        [
+          154.37,
+          195.89
+        ],
+        [
+          155.01,
+          196.53
+        ],
+        [
+          155.76,
+          197.0
+        ],
+        [
+          156.61,
+          197.3
+        ],
+        [
+          157.5,
+          197.4
+        ],
+        [
+          183.1,
+          197.4
+        ],
+        [
+          183.99,
+          197.3
+        ],
+        [
+          184.84,
+          197.0
+        ],
+        [
+          185.59,
+          196.53
+        ],
+        [
+          186.23,
+          195.89
+        ],
+        [
+          186.7,
+          195.14
+        ],
+        [
+          187.0,
+          194.29
+        ],
+        [
+          187.1,
+          193.4
+        ],
+        [
+          187.1,
+          180.6
+        ],
+        [
+          188.3,
+          179.4
+        ]
+      ],
+      [
+        [
+          112.3,
+          179.4
+        ],
+        [
+          152.3,
+          179.4
         ]
       ]
     ],
     "fold": [
       [
         [
-          27.2,
-          52.5
+          36.3,
+          67.4
         ],
         [
-          27.2,
-          172.5
+          36.3,
+          179.4
         ]
       ],
       [
         [
-          77.2,
-          52.5
+          76.3,
+          67.4
         ],
         [
-          77.2,
-          172.5
+          76.3,
+          179.4
         ]
       ],
       [
         [
-          117.2,
-          52.5
+          112.3,
+          67.4
         ],
         [
-          117.2,
-          172.5
+          112.3,
+          179.4
         ]
       ],
       [
         [
-          167.2,
-          52.5
+          152.3,
+          67.4
         ],
         [
-          167.2,
-          172.5
+          152.3,
+          179.4
         ]
       ],
       [
         [
-          27.2,
-          52.5
+          36.3,
+          67.4
         ],
         [
-          77.2,
-          52.5
+          76.3,
+          67.4
         ]
       ],
       [
         [
-          77.2,
-          52.5
+          38.7,
+          31.4
         ],
         [
-          117.2,
-          52.5
+          73.9,
+          31.4
         ]
       ],
       [
         [
-          167.2,
-          52.5
+          76.3,
+          67.4
         ],
         [
-          207.2,
-          52.5
+          112.3,
+          67.4
         ]
       ],
       [
         [
-          27.2,
-          172.5
+          152.3,
+          67.4
         ],
         [
-          77.2,
-          172.5
+          188.3,
+          67.4
         ]
       ],
       [
         [
-          77.2,
-          172.5
+          36.3,
+          179.4
         ],
         [
-          117.2,
-          172.5
+          76.3,
+          179.4
         ]
       ],
       [
         [
-          167.2,
-          172.5
+          38.7,
+          215.4
         ],
         [
-          207.2,
-          172.5
+          73.9,
+          215.4
+        ]
+      ],
+      [
+        [
+          76.3,
+          179.4
+        ],
+        [
+          112.3,
+          179.4
+        ]
+      ],
+      [
+        [
+          152.3,
+          179.4
+        ],
+        [
+          188.3,
+          179.4
         ]
       ]
     ],
@@ -344,10 +787,12 @@
       {
         "id": "back",
         "label": "Back",
-        "x": 27.2,
-        "y": 52.5,
-        "w": 50.0,
-        "h": 120.0,
+        "x": 36.3,
+        "y": 67.4,
+        "w": 40.0,
+        "h": 112.0,
+        "dw": 40.0,
+        "dh": 112.0,
         "face": "back",
         "rotate": 0,
         "printable": true
@@ -355,10 +800,12 @@
       {
         "id": "left",
         "label": "Left side",
-        "x": 77.2,
-        "y": 52.5,
-        "w": 40.0,
-        "h": 120.0,
+        "x": 76.3,
+        "y": 67.4,
+        "w": 36.0,
+        "h": 112.0,
+        "dw": 36.0,
+        "dh": 112.0,
         "face": "left",
         "rotate": 0,
         "printable": true
@@ -366,10 +813,12 @@
       {
         "id": "front",
         "label": "Front",
-        "x": 117.2,
-        "y": 52.5,
-        "w": 50.0,
-        "h": 120.0,
+        "x": 112.3,
+        "y": 67.4,
+        "w": 40.0,
+        "h": 112.0,
+        "dw": 40.0,
+        "dh": 112.0,
         "face": "front",
         "rotate": 0,
         "printable": true
@@ -377,416 +826,583 @@
       {
         "id": "right",
         "label": "Right side",
-        "x": 167.2,
-        "y": 52.5,
-        "w": 40.0,
-        "h": 120.0,
+        "x": 152.3,
+        "y": 67.4,
+        "w": 36.0,
+        "h": 112.0,
+        "dw": 36.0,
+        "dh": 112.0,
         "face": "right",
         "rotate": 0,
         "printable": true
       },
       {
         "id": "top",
-        "label": "Top (tuck)",
-        "x": 27.2,
-        "y": 14.0,
-        "w": 50.0,
-        "h": 38.5,
+        "label": "Top",
+        "x": 36.3,
+        "y": 31.4,
+        "w": 40.0,
+        "h": 36.0,
+        "dw": 40.0,
+        "dh": 36.0,
         "face": "top",
-        "rotate": 0,
+        "rotate": 180,
         "printable": true
       },
       {
         "id": "bottom",
-        "label": "Bottom (tuck)",
-        "x": 27.2,
-        "y": 172.5,
-        "w": 50.0,
-        "h": 38.5,
+        "label": "Bottom",
+        "x": 36.3,
+        "y": 179.4,
+        "w": 40.0,
+        "h": 36.0,
+        "dw": 40.0,
+        "dh": 36.0,
         "face": "bottom",
         "rotate": 0,
         "printable": true
       },
       {
+        "id": "bottom_tuck",
+        "label": "Bottom tuck",
+        "x": 36.3,
+        "y": 215.4,
+        "w": 40.0,
+        "h": 17.4,
+        "dw": 40.0,
+        "dh": 17.4,
+        "face": "bottom_tuck",
+        "rotate": 0,
+        "printable": false
+      },
+      {
+        "id": "top_tuck",
+        "label": "Top tuck",
+        "x": 36.3,
+        "y": 14.0,
+        "w": 40.0,
+        "h": 17.4,
+        "dw": 40.0,
+        "dh": 17.4,
+        "face": "top_tuck",
+        "rotate": 0,
+        "printable": false
+      },
+      {
         "id": "glue",
         "label": "Glue flap",
-        "x": 14.0,
-        "y": 52.5,
-        "w": 13.2,
-        "h": 120.0,
+        "x": 24.0,
+        "y": 67.4,
+        "w": 12.3,
+        "h": 112.0,
+        "dw": 12.3,
+        "dh": 112.0,
         "face": "glue",
         "rotate": 0,
         "printable": false
       }
     ],
     "notes": [
-      "Glue flap 13.2 mm, glues behind the right side wall.",
-      "Tuck flaps 38.5 mm, dust flaps 37.0 mm.",
-      "Both tucks run in the same direction."
+      "Glue flap 12.3 mm, glues behind the right side wall.",
+      "Lids 36 mm with 17 mm tucks and slit locks at the shoulders; dust flaps 18 mm.",
+      "Both closures hinge on the back panel."
     ],
     "material_hint": "Folding boxboard GC1, 350-400 gsm."
   },
   "artwork": {
-    "concept": "Dark green, botanical, quiet. One gold accent.",
+    "concept": "Quiet apothecary: forest green and warm cream, one arch window, a gold seal.",
     "palette": {
-      "bg": "#0d3b32",
-      "deep": "#0a2b25",
-      "gold": "#d8b068",
-      "cream": "#f4efe3"
+      "forest": "#133d33",
+      "cream": "#f2ebdd",
+      "gold": "#c9a24e",
+      "sage": "#5d7a6f"
     },
     "fonts": {
       "display": "cormorant",
       "body": "jost",
-      "mono": "ibmmono"
+      "mono": "ibmmono",
+      "am": "ethiopic"
     },
     "panels": {
       "front": {
-        "background": {
-          "type": "linear",
-          "angle": 110,
-          "stops": [
-            "#0d3b32",
-            "#0a2b25"
-          ]
-        },
+        "background": "#f2ebdd",
         "layers": [
           {
-            "type": "pattern",
-            "name": "Botanical pattern",
-            "x": 0,
-            "y": 0,
-            "w": 50,
-            "h": 120,
-            "motif": "leaves",
-            "tile": 9,
-            "color": "#1b5a4c",
-            "opacity": 0.5,
-            "patternRotate": 18,
-            "id": "front-1-deb9",
+            "type": "text",
+            "name": "Brand",
+            "text": "Habesha Botanics",
+            "transform": "uppercase",
+            "x": 4,
+            "y": 7,
+            "w": 32,
+            "font": "body",
+            "size": 2.3,
+            "weight": 500,
+            "letterSpacing": 0.55,
+            "align": "center",
+            "fill": "#133d33",
+            "id": "front-1-1116",
             "visible": true
           },
           {
-            "type": "rect",
-            "name": "Light field",
-            "x": 0,
-            "y": 52,
-            "w": 50,
-            "h": 46,
+            "type": "arch",
+            "name": "Arch window",
+            "x": 5,
+            "y": 15,
+            "w": 30,
+            "h": 50,
+            "fill": "#133d33",
+            "id": "front-2-da09",
+            "visible": true
+          },
+          {
+            "type": "pattern",
+            "name": "Leaf pattern",
+            "shape": "arch",
+            "x": 5,
+            "y": 15,
+            "w": 30,
+            "h": 50,
+            "motif": "leaves",
+            "tile": 6,
+            "color": "#1f5747",
+            "patternRotate": 24,
+            "id": "front-3-3326",
+            "visible": true
+          },
+          {
+            "type": "ellipse",
+            "name": "Glow",
+            "x": 7,
+            "y": 24,
+            "w": 26,
+            "h": 30,
             "fill": {
               "type": "radial",
-              "cx": 50,
-              "cy": 45,
-              "r": 85,
               "stops": [
                 {
-                  "color": "#1f7a65",
+                  "color": "#2c7a62",
                   "opacity": 0.55
                 },
                 {
-                  "color": "#0d3b32",
+                  "color": "#133d33",
                   "opacity": 0
                 }
               ]
             },
-            "id": "front-2-8c0d",
+            "id": "front-4-921c",
             "visible": true
           },
           {
-            "type": "text",
-            "name": "Brand",
-            "text": "HABESHA BOTANICS",
-            "x": 8,
-            "y": 9,
-            "w": 34,
-            "font": "display",
-            "size": 3.3,
-            "weight": 500,
-            "fill": "#e9e2d2",
-            "align": "center",
-            "letterSpacing": 0.55,
-            "transform": "uppercase",
-            "id": "front-3-afd2",
+            "type": "star",
+            "name": "Seal",
+            "x": 12,
+            "y": 56,
+            "w": 16,
+            "points": 18,
+            "inner": 0.9,
+            "fill": "#c9a24e",
+            "id": "front-5-50f9",
             "visible": true
           },
           {
-            "type": "line",
-            "name": "Hairline",
-            "x": 8,
-            "y": 17,
-            "w": 34,
-            "h": 0,
-            "stroke": "#d8b068",
-            "strokeWidth": 0.3,
-            "id": "front-4-a4b6",
+            "type": "circle_text",
+            "name": "Seal ring",
+            "x": 12.6,
+            "y": 56.6,
+            "w": 14.8,
+            "text": "Cold pressed",
+            "repeat": true,
+            "size": 1.5,
+            "weight": 600,
+            "letterSpacing": 0.1,
+            "font": "body",
+            "fill": "#133d33",
+            "id": "front-6-c538",
+            "visible": true
+          },
+          {
+            "type": "ellipse",
+            "name": "Seal centre",
+            "x": 15,
+            "y": 59,
+            "w": 10,
+            "h": 10,
+            "fill": "#133d33",
+            "id": "front-7-a988",
+            "visible": true
+          },
+          {
+            "type": "icon",
+            "name": "Seal mark",
+            "icon": "drop",
+            "x": 17.5,
+            "y": 61.5,
+            "w": 5,
+            "color": "#c9a24e",
+            "id": "front-8-7898",
             "visible": true
           },
           {
             "type": "text",
             "name": "Product name",
-            "text": "Nigella\nGlow Serum",
-            "x": 7,
-            "y": 56,
-            "w": 36,
+            "text": "Nigella",
+            "x": 4,
+            "y": 75.5,
+            "w": 32,
             "font": "display",
-            "size": 6.2,
-            "weight": 400,
-            "fill": "#f4efe3",
+            "size": 9,
+            "weight": 500,
+            "italic": true,
             "align": "center",
-            "lineHeight": 1.12,
-            "id": "front-5-46cf",
+            "fill": "#133d33",
+            "id": "front-9-e015",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Product name 2",
+            "text": "Glow Serum",
+            "x": 4,
+            "y": 86.5,
+            "w": 32,
+            "font": "display",
+            "size": 5.6,
+            "weight": 500,
+            "align": "center",
+            "fill": "#133d33",
+            "id": "front-10-f47e",
             "visible": true
           },
           {
             "type": "text",
             "name": "Descriptor",
-            "text": "Black seed & honey",
-            "x": 7,
-            "y": 82.5,
-            "w": 36,
+            "text": "Black seed & wild honey face serum",
+            "x": 5,
+            "y": 94.6,
+            "w": 30,
             "font": "body",
-            "size": 2.5,
-            "fill": "#a9c7bb",
+            "size": 2.1,
+            "lineHeight": 1.35,
             "align": "center",
-            "letterSpacing": 0.3,
-            "id": "front-6-7ed8",
-            "visible": true
-          },
-          {
-            "type": "ellipse",
-            "name": "Seal",
-            "x": 19,
-            "y": 90,
-            "w": 12,
-            "h": 12,
-            "fill": "none",
-            "stroke": "#d8b068",
-            "strokeWidth": 0.35,
-            "id": "front-7-a119",
+            "fill": "#4f6b60",
+            "id": "front-11-7d97",
             "visible": true
           },
           {
             "type": "text",
-            "name": "Seal text",
+            "name": "Net content",
             "text": "30 ml",
-            "x": 19,
-            "y": 93.6,
-            "w": 12,
+            "x": 8.5,
+            "y": 103.2,
+            "w": 13,
             "font": "body",
-            "size": 2.6,
+            "size": 2.4,
             "weight": 600,
-            "fill": "#d8b068",
-            "align": "center",
-            "id": "front-8-00a6",
+            "align": "right",
+            "fill": "#133d33",
+            "id": "front-12-82ef",
             "visible": true
           },
           {
-            "type": "text",
-            "name": "Footline",
-            "text": "COLD PRESSED · ETHIOPIA",
-            "x": 6,
-            "y": 108,
-            "w": 38,
-            "font": "body",
-            "size": 1.9,
-            "weight": 500,
-            "fill": "#7fa396",
-            "align": "center",
-            "letterSpacing": 0.4,
-            "id": "front-9-4bac",
+            "type": "icon",
+            "name": "Estimated sign",
+            "icon": "estimated",
+            "x": 21.9,
+            "y": 102.6,
+            "w": 4,
+            "color": "#133d33",
+            "id": "front-13-0369",
             "visible": true
           }
         ]
       },
       "back": {
-        "background": "#0d3b32",
+        "background": "#f2ebdd",
         "layers": [
           {
             "type": "text",
             "name": "Back headline",
-            "text": "Light daily care",
-            "x": 7,
-            "y": 14,
-            "w": 36,
+            "text": "Light, daily care",
+            "x": 5,
+            "y": 8,
+            "w": 30,
             "font": "display",
-            "size": 4.2,
-            "fill": "#f4efe3",
-            "id": "back-1-4a62",
+            "size": 4.6,
+            "weight": 600,
+            "fill": "#133d33",
+            "id": "back-1-9d5b",
             "visible": true
           },
           {
             "type": "text",
-            "name": "Description",
-            "text": "A light serum built on cold-pressed black seed oil from the highlands and Ethiopian forest honey. Sinks in quickly and leaves skin soft and calm.",
-            "x": 7,
-            "y": 24,
-            "w": 36,
+            "name": "Story",
+            "text": "A light serum built on cold-pressed black seed oil and Ethiopian forest honey. It sinks in fast and leaves skin soft and calm.",
+            "x": 5,
+            "y": 21.5,
+            "w": 30,
             "font": "body",
-            "size": 2.2,
-            "fill": "#bcd4c9",
-            "lineHeight": 1.5,
-            "id": "back-2-14d0",
+            "size": 2.1,
+            "lineHeight": 1.45,
+            "fill": "#3d4f48",
+            "id": "back-2-fad7",
+            "visible": true
+          },
+          {
+            "type": "line",
+            "name": "Rule",
+            "x": 5,
+            "y": 38.5,
+            "w": 30,
+            "h": 0,
+            "stroke": "#c9a24e",
+            "strokeWidth": 0.25,
+            "id": "back-3-547a",
             "visible": true
           },
           {
             "type": "text",
             "name": "Directions title",
-            "text": "HOW TO USE",
-            "x": 7,
-            "y": 48,
-            "w": 36,
+            "text": "How to use",
+            "transform": "uppercase",
+            "x": 5,
+            "y": 41.5,
+            "w": 30,
             "font": "body",
-            "size": 2.0,
-            "weight": 700,
-            "fill": "#d8b068",
+            "size": 1.9,
+            "weight": 600,
             "letterSpacing": 0.35,
-            "id": "back-3-7449",
+            "fill": "#8a6a22",
+            "id": "back-4-f4c4",
             "visible": true
           },
           {
             "type": "text",
             "name": "Directions",
             "text": "Morning and night, press two or three drops into clean skin.",
-            "x": 7,
-            "y": 52,
-            "w": 36,
+            "x": 5,
+            "y": 45.5,
+            "w": 30,
             "font": "body",
-            "size": 2.1,
-            "fill": "#bcd4c9",
+            "size": 2.0,
             "lineHeight": 1.45,
-            "id": "back-4-db5d",
+            "fill": "#3d4f48",
+            "id": "back-5-eab2",
             "visible": true
           },
           {
-            "type": "rect",
-            "name": "Barcode area",
-            "x": 7,
-            "y": 92,
-            "w": 36,
-            "h": 22,
-            "fill": "#f4efe3",
-            "rx": 1,
-            "id": "back-5-b0e8",
+            "type": "icon",
+            "name": "PAO",
+            "icon": "pao",
+            "label": "12M",
+            "x": 5,
+            "y": 58,
+            "w": 7,
+            "color": "#133d33",
+            "id": "back-6-e66e",
+            "visible": true
+          },
+          {
+            "type": "icon",
+            "name": "Recycle",
+            "icon": "recycle",
+            "x": 14,
+            "y": 58,
+            "w": 7,
+            "color": "#133d33",
+            "id": "back-7-909d",
+            "visible": true
+          },
+          {
+            "type": "icon",
+            "name": "Natural",
+            "icon": "leaf",
+            "x": 23,
+            "y": 58,
+            "w": 7,
+            "color": "#133d33",
+            "id": "back-8-883a",
+            "visible": true
+          },
+          {
+            "type": "barcode",
+            "name": "Barcode",
+            "x": 5,
+            "y": 72.5,
+            "w": 30,
+            "h": 21,
+            "color": "#133d33",
+            "background": "#ffffff",
+            "id": "back-9-976c",
             "visible": true
           },
           {
             "type": "text",
-            "name": "Barcode note",
-            "text": "EAN-13 goes here",
-            "x": 7,
-            "y": 101,
-            "w": 36,
+            "name": "Origin",
+            "text": "Made in Ethiopia",
+            "x": 5,
+            "y": 97.5,
+            "w": 30,
             "font": "body",
             "size": 2.0,
-            "fill": "#8a9a93",
+            "weight": 500,
             "align": "center",
-            "id": "back-6-09cf",
+            "fill": "#4f6b60",
+            "id": "back-10-2d6e",
             "visible": true
           }
         ]
       },
       "left": {
-        "background": "#0d3b32",
+        "background": "#133d33",
         "layers": [
           {
             "type": "text",
-            "name": "INCI title",
-            "text": "INGREDIENTS / INCI",
+            "name": "Ingredients title",
+            "text": "Ingredients",
+            "transform": "uppercase",
             "x": 5,
-            "y": 12,
-            "w": 30,
-            "font": "mono",
+            "y": 8,
+            "w": 26,
+            "font": "body",
             "size": 1.8,
             "weight": 600,
-            "fill": "#d8b068",
-            "letterSpacing": 0.2,
-            "id": "left-1-3acd",
+            "letterSpacing": 0.3,
+            "fill": "#c9a24e",
+            "id": "left-1-b063",
             "visible": true
           },
           {
             "type": "text",
             "name": "INCI",
-            "text": "Simmondsia Chinensis Seed Oil, Nigella Sativa Seed Oil, Mel, Tocopherol, Helianthus Annuus Seed Oil, Parfum (Natural), Linalool.",
+            "text": "Simmondsia Chinensis (Jojoba) Seed Oil, Nigella Sativa Seed Oil, Mel (Honey), Tocopherol, Helianthus Annuus Seed Oil, Parfum, Linalool.",
             "x": 5,
-            "y": 17,
-            "w": 30,
+            "y": 12.5,
+            "w": 26,
             "font": "mono",
             "size": 1.6,
-            "fill": "#a9c7bb",
             "lineHeight": 1.45,
-            "id": "left-2-262f",
+            "fill": "#d9e4dd",
+            "id": "left-2-0454",
             "visible": true
           },
           {
             "type": "text",
-            "name": "Warning",
-            "text": "For external use only. Avoid contact with eyes. Store cool and dry.",
+            "name": "Warnings",
+            "text": "For external use only. Avoid contact with eyes. Stop use if irritation occurs. Keep out of reach of children. Store below 25 °C.",
             "x": 5,
-            "y": 86,
-            "w": 30,
+            "y": 80,
+            "w": 26,
             "font": "body",
-            "size": 1.6,
-            "fill": "#7fa396",
+            "size": 1.7,
             "lineHeight": 1.4,
-            "id": "left-3-eac5",
+            "fill": "#a9c4b8",
+            "id": "left-3-37e8",
+            "visible": true
+          },
+          {
+            "type": "text",
+            "name": "Amharic",
+            "text": "ጥቁር አዝሙድ እና ማር",
+            "x": 5,
+            "y": 99.5,
+            "w": 26,
+            "font": "am",
+            "size": 2.4,
+            "weight": 500,
+            "fill": "#f2ebdd",
+            "id": "left-4-f6b8",
             "visible": true
           }
         ]
       },
       "right": {
-        "background": "#0d3b32",
+        "background": "#f2ebdd",
         "layers": [
           {
             "type": "text",
+            "name": "Botanical name",
+            "text": "Nigella sativa",
+            "x": -20,
+            "y": 50,
+            "w": 76,
+            "h": 10,
+            "rotate": -90,
+            "font": "display",
+            "size": 7,
+            "italic": true,
+            "weight": 500,
+            "align": "center",
+            "fill": "#133d33",
+            "opacity": 0.9,
+            "id": "right-1-3189",
+            "visible": true
+          },
+          {
+            "type": "text",
             "name": "Responsible person",
-            "text": "Made in Ethiopia\nHabesha Botanics PLC\nAddis Ababa",
+            "text": "Habesha Botanics\nAddis Ababa, Ethiopia",
             "x": 5,
-            "y": 12,
-            "w": 30,
+            "y": 8,
+            "w": 26,
             "font": "body",
             "size": 1.8,
-            "fill": "#a9c7bb",
-            "lineHeight": 1.5,
-            "id": "right-1-5e07",
+            "lineHeight": 1.45,
+            "fill": "#3d4f48",
+            "id": "right-2-3bb5",
             "visible": true
           },
           {
             "type": "text",
             "name": "Batch",
-            "text": "LOT:\nEXP:",
+            "text": "LOT\nEXP",
             "x": 5,
-            "y": 96,
-            "w": 30,
+            "y": 98,
+            "w": 26,
             "font": "mono",
             "size": 1.8,
-            "fill": "#7fa396",
-            "lineHeight": 1.6,
-            "id": "right-2-8684",
+            "lineHeight": 1.5,
+            "fill": "#4f6b60",
+            "id": "right-3-04a6",
             "visible": true
           }
         ]
       },
       "top": {
-        "background": "#0a2b25",
+        "background": "#133d33",
         "layers": [
           {
+            "type": "arch",
+            "name": "Mini arch",
+            "x": 16.5,
+            "y": 8,
+            "w": 7,
+            "h": 9,
+            "fill": "#c9a24e",
+            "id": "top-1-0c39",
+            "visible": true
+          },
+          {
             "type": "text",
-            "name": "Lid",
-            "text": "HABESHA",
+            "name": "Lid wordmark",
+            "text": "Habesha",
+            "transform": "uppercase",
             "x": 4,
-            "y": 14,
-            "w": 42,
+            "y": 20.5,
+            "w": 32,
             "font": "display",
-            "size": 3.0,
-            "fill": "#d8b068",
+            "size": 3.2,
+            "weight": 600,
+            "letterSpacing": 0.8,
             "align": "center",
-            "letterSpacing": 0.6,
-            "id": "top-1-a6cb",
+            "fill": "#f2ebdd",
+            "id": "top-2-418c",
             "visible": true
           }
         ]
       },
       "bottom": {
-        "background": "#0a2b25",
+        "background": "#133d33",
         "layers": []
       }
     }
@@ -794,7 +1410,7 @@
   "assets": [],
   "messages": [],
   "copy": {
-    "descriptor": "Black seed & honey",
+    "descriptor": "Black seed & wild honey face serum",
     "net_content": "30 ml",
     "origin": "Made in Ethiopia"
   },

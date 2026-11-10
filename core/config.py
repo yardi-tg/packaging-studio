@@ -11,10 +11,16 @@ ENV_FILE = ROOT / ".env"
 
 _DEFAULTS = {
     "ANTHROPIC_API_KEY": "",
-    "ANTHROPIC_MODEL": "claude-opus-4-5-20251101",
+    "ANTHROPIC_MODEL": "claude-opus-5-5",
+    # How hard the model thinks: medium, high or max. Higher designs better
+    # and costs more, because thinking is billed as output.
+    "ANTHROPIC_EFFORT": "high",
+    # Only change this if you route traffic through a proxy.
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
     # Optional image providers. Leave empty to disable.
     "GEMINI_API_KEY": "",
     "GEMINI_IMAGE_MODEL": "gemini-3-pro-image-preview",
+    "GEMINI_AUTH": "",
     "OPENAI_API_KEY": "",
     "OPENAI_IMAGE_MODEL": "gpt-image-1",
     "PORT": "8777",
@@ -22,21 +28,48 @@ _DEFAULTS = {
     "CURRENCY": "USD",
 }
 
-# Price per million tokens, in USD.
+# Price per million tokens, in USD, used for the cost read-out in the app.
 #
-# These are hard-coded so the app can show you a cost estimate without calling
-# out to anything. Prices change -- check the current list at
-# https://www.anthropic.com/pricing and edit this table if it drifts.
+# From Anthropic's model pages, November 2026. Prices change, so treat the
+# numbers in the app as an estimate and check https://www.anthropic.com/pricing
+# if they ever look off. Haiku 5.5 is the short-prompt rate (under 100k tokens).
 MODEL_PRICING = {
-    "claude-opus-4-5":   {"input": 5.00, "output": 25.00, "label": "Opus 4.5"},
-    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00, "label": "Sonnet 4.5"},
-    "claude-haiku-4-5":  {"input": 1.00, "output":  5.00, "label": "Haiku 4.5"},
+    "claude-fable-5-2":  {"input": 8.00, "output": 40.00, "cache_read": 0.80,
+                          "cache_write": 10.00, "label": "Fable 5.2"},
+    "claude-opus-5-5":   {"input": 4.00, "output": 20.00, "cache_read": 0.20,
+                          "cache_write": 5.00, "label": "Opus 5.5"},
+    "claude-opus-5":     {"input": 5.00, "output": 25.00, "cache_read": 0.50,
+                          "cache_write": 6.25, "label": "Opus 5"},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00, "cache_read": 0.10,
+                          "cache_write": 2.50, "label": "Sonnet 5.5"},
+    "claude-haiku-5-5":  {"input": 0.10, "output": 0.50, "cache_read": 0.01,
+                          "cache_write": 0.125, "label": "Haiku 5.5"},
+    # older ids, in case an .env still names one
+    "claude-opus-4-5":   {"input": 5.00, "output": 25.00, "cache_read": 0.50,
+                          "cache_write": 6.25, "label": "Opus 4.5"},
+    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00, "cache_read": 0.30,
+                          "cache_write": 3.75, "label": "Sonnet 4.5"},
+    "claude-haiku-4-5":  {"input": 1.00, "output": 5.00, "cache_read": 0.10,
+                          "cache_write": 1.25, "label": "Haiku 4.5"},
 }
-_FALLBACK_PRICE = {"input": 3.00, "output": 15.00, "label": "unknown model"}
-
-# Cache reads are much cheaper than fresh input, cache writes slightly dearer.
+# Used only when a model's table entry has no explicit cache prices.
 CACHE_READ_FACTOR = 0.1
 CACHE_WRITE_FACTOR = 1.25
+
+_FALLBACK_PRICE = {"input": 4.00, "output": 20.00, "cache_read": 0.20,
+                   "cache_write": 5.00, "label": "unknown model"}
+
+# The choices offered in Settings, best first.
+MODEL_CHOICES = [
+    {"id": "claude-opus-5-5", "label": "Opus 5.5",
+     "note": "best design judgement, recommended"},
+    {"id": "claude-fable-5-2", "label": "Fable 5.2",
+     "note": "most capable, priciest"},
+    {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5",
+     "note": "good balance for everyday edits"},
+    {"id": "claude-haiku-5-5", "label": "Haiku 5.5",
+     "note": "very fast and cheap, for small fixes"},
+]
 
 
 def _parse_env_file(path: pathlib.Path) -> dict:
@@ -103,6 +136,23 @@ def write_env(updates: dict):
     reload_env()
 
 
+_UPGRADES = {
+    "claude-opus-4-5": "claude-opus-5-5",
+    "claude-sonnet-4-5": "claude-sonnet-5-5",
+    "claude-haiku-4-5": "claude-haiku-5-5",
+}
+
+
+def migrate():
+    """Move an older .env onto the current model generation."""
+    current = _file_env.get("ANTHROPIC_MODEL", "")
+    for old, new in _UPGRADES.items():
+        if current.startswith(old):
+            write_env({"ANTHROPIC_MODEL": new})
+            return new
+    return None
+
+
 def image_provider() -> str:
     """Which image provider is active: 'gemini', 'openai' or 'none'."""
     if get("GEMINI_API_KEY"):
@@ -115,9 +165,9 @@ def image_provider() -> str:
 def pricing_for(model: str) -> dict:
     """Look up the price table entry for a model id."""
     model = (model or "").strip()
-    for prefix, price in MODEL_PRICING.items():
+    for prefix in sorted(MODEL_PRICING, key=len, reverse=True):
         if model.startswith(prefix):
-            return price
+            return MODEL_PRICING[prefix]
     return _FALLBACK_PRICE
 
 
@@ -131,8 +181,8 @@ def price_usage(usage: dict, model: str) -> dict:
 
     cost = (
         plain_in * price["input"]
-        + cache_read * price["input"] * CACHE_READ_FACTOR
-        + cache_write * price["input"] * CACHE_WRITE_FACTOR
+        + cache_read * price.get("cache_read", price["input"] * CACHE_READ_FACTOR)
+        + cache_write * price.get("cache_write", price["input"] * CACHE_WRITE_FACTOR)
         + out * price["output"]
     ) / 1_000_000.0
 
@@ -150,6 +200,7 @@ def status() -> dict:
     model = get("ANTHROPIC_MODEL")
     return {
         "anthropic": bool(get("ANTHROPIC_API_KEY")),
+        "effort": get("ANTHROPIC_EFFORT") or "high",
         "model": model,
         "model_label": pricing_for(model)["label"],
         "image_provider": image_provider(),

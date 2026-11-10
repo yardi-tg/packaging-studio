@@ -43,6 +43,11 @@ out whether text overflows its panel, whether two blocks collide, and whether
 anything sits too close to a cut line. The findings go back to the agent, which
 has to fix them before it can tell you the design is finished.
 
+Then it looks. The agent asks your browser to render the panel it just drew,
+gets the picture back, and critiques it like an art director: hierarchy,
+margins, rhythm, legibility, shelf impact. It fixes what it sees before it
+answers you. You can watch it happen in the chat.
+
 Claude does not generate pixels, so the photography comes from a second model.
 That turns out to be the better division of labour: the box is built correctly
 as vectors, and the image model only has to light it and put it somewhere real.
@@ -52,30 +57,44 @@ See [Photos](#photos).
 
 ## What you get
 
-**Six real structures**, with the flap geometry each one actually needs.
+**Eight real structures**, with the flap geometry each one actually needs.
 
 | Key | Structure | Good for |
 |---|---|---|
 | `ste` | Folding carton, straight tuck end | The cosmetics standard: creams, serums, tubes |
-| `rte` | Folding carton, reverse tuck end | Cheaper to die-cut |
+| `rte` | Folding carton, reverse tuck end | Same, nests tighter on the sheet |
+| `autolock` | Folding carton, crash-lock bottom | Jars and glass: the bottom pops into place |
+| `twopiece` | Lid and base | Gift sets, premium skincare |
 | `sleeve` | Sleeve / wrap | Soap bars, sets, wrapping an inner box |
 | `rsc` | Regular slotted container (FEFCO 0201) | Corrugated shipping boxes |
 | `mailer` | Mailer box (FEFCO 0427) | Premium shipping, printable inside |
 | `pillow` | Pillow box | Flat products, samples, inserts |
 
-**A dieline that is computed, not guessed.** Glue flaps, dust flaps, tuck
-noses and crease lines sit where the construction puts them. Solid red is cut,
-dashed blue is crease, everything at 1:1.
+**A dieline that is computed, not guessed.** Tuck cartons get a proper lid
+panel with a rounded tuck, slit locks at the shoulders and relieved dust flaps;
+glue flaps stay ink-free; panels that fold over are drawn upside down in the
+flat so they read the right way up once folded. Solid red is cut, dashed blue
+is crease, everything at 1:1.
 
 ![The dieline on its own](docs/screenshot-dieline.png)
 
 **A 3D preview** built from the same data, so what you see folded is what you
-will print. Studio, shelf and dark scenes; save a frame as PNG.
+will print. Six surfaces (studio, marble, wood, linen, shelf, dark), camera
+presets, filmic lighting; save a frame as PNG.
 
 ![The 3D preview](docs/screenshot-3d.png)
 
 **Layer editing.** Every element is addressable. Ask for the headline a shade
-smaller and that one layer changes; nothing else is touched.
+smaller and that one layer changes; nothing else is touched. Or click the layer
+yourself and change its text, size, colour or position directly: instant, and
+it costs nothing.
+
+**Amharic, and design that knows where it is.** Ge'ez script is set in Noto
+Sans and Serif Ethiopic, measured correctly so it wraps and fits. A `tibeb`
+pattern draws the woven border of habesha cloth, and `zigzag` echoes mesob
+basketry. Seals with text set round a circle, scalloped badges, EAN-13 barcodes
+with the check digit worked out, and the PAO, ℮ and recycling marks are built
+in.
 
 **Production files**, written next to the project:
 
@@ -87,7 +106,8 @@ smaller and that one layer changes; nothing else is touched.
 - a plain-text briefing on fonts, colour space and bleed
 
 **A running cost total.** Every request shows what it cost, and the project
-keeps a sum. No surprises at the end of the month.
+keeps a sum. The reply streams in as it is written, so you are never staring at
+a spinner.
 
 ---
 
@@ -127,13 +147,18 @@ without spending anything.
 
 | Model | Input / output per million | Use it for |
 |---|---|---|
-| Opus 4.5 | $5 / $25 | The first design. Best judgement about layout and hierarchy. |
-| Sonnet 4.5 | $3 / $15 | Everyday work. |
-| Haiku 4.5 | $1 / $5 | Small fixes and copy tweaks. |
+| Opus 5.5 | $4 / $20 | The default. Best judgement about layout and hierarchy. |
+| Fable 5.2 | $8 / $40 | When you want the most capable model there is. |
+| Sonnet 5.5 | $2 / $10 | Everyday edits. |
+| Haiku 5.5 | $0.10 / $0.50 | Small fixes and copy tweaks. |
 
-The system prompt is cached, so a long back-and-forth costs far less than the
-token counts suggest. A full design with several rounds of edits usually lands
-somewhere between a few cents and a couple of dollars.
+**How hard it thinks** (Settings) sets the model's effort: *medium*, *high*
+(recommended for design) or *max*. Thinking is billed as output, so higher
+costs more and takes longer.
+
+The conversation is cached as it grows, so each step of a long design pass
+costs a fraction of the first. A full design with several rounds of edits
+usually lands somewhere between a few cents and a couple of dollars.
 
 ---
 
@@ -179,8 +204,11 @@ class BrandStrategist(Agent):
     key   = "brand_strategist"
     title = "Brand strategist"
 
-    def system_prompt(self, project):
+    def system_prompt(self):             # fixed for the whole conversation
         return "You are ..."
+
+    def state_block(self, project):      # sent fresh with every message
+        return f"Brand: {project['brief'].get('brand')}"
 
     def tools(self):
         return [Tool("research", "...", schema, handler)]
@@ -189,6 +217,14 @@ class BrandStrategist(Agent):
 Agents working on the same project share its data, so one can research what the
 next one designs.
 
+Why the split between a fixed prompt and a state block: current Claude models
+sign their reasoning against everything that came before it. Change the system
+prompt or edit history mid-conversation and the model can no longer read its
+own earlier thinking. So the conversation here is append-only, the changing
+facts travel with each new message, and when something fixed does change (new
+model, new key, app update) the chat is folded into a summary and a fresh one
+starts from the project state. `core/agent.py` has the details.
+
 ---
 
 ## How it fits together
@@ -196,8 +232,9 @@ next one designs.
 ```
 server.py              Local HTTP server, standard library only
 core/
-  llm.py               Anthropic Messages API over urllib
-  agent.py             Tool loop, usage accounting
+  llm.py               Anthropic Messages API, streamed, over urllib
+  agent.py             Append-only tool loop, compaction, usage accounting
+  visual.py            Lets the agent see renders of its own work
   registry.py          Which agents exist
   dieline.py           Structural geometry → cut and crease paths
   artwork.py           Layer spec → SVG
@@ -210,8 +247,21 @@ agents/
   packaging_designer.py
   _template.py         Copy this to add your own
 web/                   Interface: one HTML file, one CSS, one JS
+tests/                 End-to-end tests against strict mock APIs
 projects/              Your projects, images and exports
 ```
+
+### Tests
+
+```bash
+python3 tests/test_agent_flow.py   # agent loop vs. a mock that enforces the API's rules
+python3 tests/test_photos.py       # photoshoot and Gemini model detection
+```
+
+No network and no keys needed: both run against local mocks. The agent test
+replays the cases that break naive implementations on current models: thinking
+in tool loops, a picture in a tool result, follow-ups, a model switch, and a
+tampered history.
 
 A project is a folder. Back one up by copying it; there is nothing else to it.
 
@@ -237,9 +287,10 @@ Read `READ-ME-FIRST.txt` in the export folder. The short version:
 
 ## Privacy
 
-Everything stays on your machine. The program talks to `api.anthropic.com` and,
-on first use, downloads the fonts a design needs from Google Fonts. Nothing else
-leaves. Your key lives in `.env`, which is gitignored.
+Everything stays on your machine. The program talks to `api.anthropic.com`,
+to Google's Gemini API if you added that key, and, on first use, downloads the
+fonts a design needs from Google Fonts. Nothing else leaves. Your keys live in
+`.env`, which is gitignored.
 
 ---
 

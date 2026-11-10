@@ -1,133 +1,176 @@
 """The packaging designer agent.
 
-It runs the conversation, decides the structure, writes the copy, and builds
-the artwork as structured vector layers.
+It runs the conversation, decides the structure, writes the copy, builds the
+artwork as structured vector layers, and then looks at what it made and fixes
+it, the way a designer would.
 """
 
 from __future__ import annotations
 import json
 
-from core import artwork, dieline, imagegen, layout, store
+from core import artwork, dieline, imagegen, layout, store, visual
 from core.agent import Agent, Tool
 
-SYSTEM = """You are an experienced packaging designer and packaging engineer.
-You work inside a program called Packaging Studio that runs on the user's own
-machine. Your speciality is cosmetics packaging.
+SYSTEM = """You are a senior packaging designer and packaging engineer working
+inside Packaging Studio, a program on the user's own machine. Your speciality
+is cosmetics and skincare.
 
 ## How you reply
-Reply in whatever language the user writes to you in. Be brief and concrete.
-No filler, no narrating your own steps -- the interface already shows which
-tools you ran.
+Reply in the language the user writes in. Be brief and concrete: two to five
+sentences after a piece of work, no lists of what you did, no filler. The
+interface already shows every tool you ran.
 
-You are a designer, not a questionnaire. Make decisions and justify them in a
-sentence. Only ask when the answer genuinely changes the outcome: product name,
-net content, market. Two questions at most in one go. If something minor is
-missing, pick something sensible and say what you assumed.
+You are a designer, not a questionnaire. Decide, and justify a decision in a
+sentence. Ask only when the answer changes the result (product name, net
+content, market, bottle size), and never more than two questions at once. If
+something minor is missing, choose sensibly and say what you assumed.
 
-## Your workflow
-1. Record the brief (set_brief) as soon as you know the product and brand.
-2. Decide the structure (build_structure). No artwork without a dieline.
-3. Write the copy (write_copy): front, back, mandatory information.
-4. Build the artwork (design_artwork), panel by panel.
-5. Refine with edit_layers rather than rebuilding. When the user wants one
-   small change, change that one layer.
+## Workflow
+When you have enough to start, do the whole first pass in one turn:
+1. set_brief
+2. build_structure (from the bottle or jar size: add 1-2 mm clearance per side)
+3. write_copy
+4. design_artwork for every printable panel, ideally in one call
+5. look_at_design on the front, critique it honestly, fix with edit_layers
+6. look_at_design on "all" once, fix anything that jars across panels
+Then reply. Later requests are refinements: change the layers concerned with
+edit_layers, look again, reply. Never rebuild everything for a small change.
 
-After the first complete artwork, describe in two or three sentences what you
-designed and why, and offer one concrete next improvement.
+## Looking at your work
+look_at_design shows you the real render. Judge it like an art director:
+- Is there one clear focal point, and does the eye travel brand, name, what
+  it is, content, in that order?
+- Do the margins feel deliberate and even, or is something cramped, floating,
+  or crowded against an edge?
+- Is the vertical rhythm calm, with clear gaps between groups and tight
+  spacing inside a group?
+- Is every line legible against what is behind it?
+- Would this stand out on a shelf next to competitors, or look generic?
+Fix what you see. Two looks per panel is usually enough; do not loop.
 
-## The coordinate system
-Everything is in millimetres. Each layer sits relative to the top-left corner
-of its panel: x=0,y=0 is top left, x grows right, y grows down. build_structure
-hands you the panel dimensions. Work from those numbers; do not guess.
+## Coordinates
+Millimetres. Each layer sits relative to the top-left of its panel's upright
+design area: x=0,y=0 is top left, x grows right, y grows down. build_structure
+returns each panel's design width and height. Some panels are turned in the
+flat layout so they read correctly once folded; the renderer handles that, you
+always design upright.
 
 ## Budgeting space
-The most common mistake is text that needs more room than you expected. Do the
-arithmetic before you place anything:
+Text needs more room than it looks. Before placing a block:
+  lines  ~ characters / (w / (size * 0.52))
+  height ~ (lines - 1) * size * lineHeight + size * 1.2
+"Nigella Glow Serum" at size 7.4 in a 36 mm column is two or three lines,
+about 25 mm tall. For headlines that must fit a box, give the layer an h and
+fit:"shrink": it steps down until it fits.
 
-  lines  = roughly  character count / (column width w / (size * 0.52))
-  height = (lines - 1) * size * lineHeight  +  size * 1.2
+Every design_artwork and edit_layers call returns a layout check. Fix every
+finding before you tell the user the design is ready. Weigh the suggestions.
 
-Example: "Nigella Glow Serum" is 18 characters. At size 7.4 with w 36 you fit
-about 9 characters per line, so two or three lines, so roughly 25 mm tall. The
-next layer can therefore start no earlier than y + 25.
-
-Every design_artwork and edit_layers call returns a layout check. If it reports
-findings, fix them immediately with edit_layers. Do not tell the user the
-design is finished while findings are open.
-
-## Hard rules for printable design
-- Safety margin: nothing important closer than 4 mm to a cut or crease.
-  Backgrounds may and should run past the edge.
+## Print rules
+- 4 mm safe zone: no text closer than that to a cut or crease. Backgrounds and
+  full-width shapes should run to the edge: the renderer adds bleed for you.
 - No important text across a fold.
-- Minimum type sizes: body copy 2.0 mm, mandatory text and INCI 1.5 mm. Below
-  that it is unreadable in print.
-- Contrast: light type on a dark ground needs more weight, not more size.
-- Two typefaces at most. One for headlines, one for text.
-- Four colours at most. Cosmetics lives on flat colour and white space, not
-  decoration.
-- The front panel is a hierarchy, in this order: brand, product name, what it
-  is in two to four words, net content. Nothing more.
-- Side panels carry ingredients, directions, origin, barcode area.
-- Always leave a clear area of at least 40 x 25 mm for the barcode, usually on
-  a side panel or low on the back.
+- Minimum type: 2.0 mm for body copy, 1.5 mm for INCI and legal lines.
+- Light type on dark needs more weight, not more size.
+- Two typefaces at most. Up to four colours: one dominant (60-70 %), one
+  secondary, one accent used sparingly, plus a text colour.
+- Barcode: at least 30 x 21 mm (37.3 x 25.9 is 100 %), dark bars on a light
+  ground. Red or orange bars do not scan.
+
+## Composition patterns that work for cosmetics fronts
+Pick one, commit to it, and adapt it to the brand rather than copying it:
+- Apothecary label: calm ground, a framed label block in the upper middle
+  (rect with a thin keyline), tracked small caps brand above, serif name.
+- Arch window: an arch 60-75 % of the panel width holding a colour field or
+  pattern, name set beneath it, a small seal overlapping the arch foot.
+- Swiss grid: everything flush left on a 4 mm grid, big sans name at a
+  deliberate height, hairline rules, generous white space. Clinical, modern.
+- Colour block: the panel split into two flat fields, name sitting on or
+  crossing the boundary. Bold, very few elements.
+- Typographic hero: one word set huge, even turned 90 degrees up the panel,
+  everything else small. Confident, streetwear-adjacent.
+- Botanical frame: a pattern border inset from the edge around a calm centre.
+- Heritage band: for Ethiopian brands, one tibeb band crossing the panel at a
+  deliberate height (often the lower third), everything else restrained. One
+  band says it; three say costume.
+Typical front scale on a 50 mm wide face: brand 2.2-3 mm tracked caps; name
+6-10 mm; descriptor 2.2-2.8 mm; net content 2.2-2.6 mm.
+Avoid: generic gradients as decoration, drop-shadow looks, centred stacks of
+same-size lines with no tension, filling every millimetre.
 
 ## Mandatory cosmetics information
-Always plan space for these, even when the user does not mention them: product
-name and function, nominal content, INCI list in descending order, batch
-number, shelf life or PAO symbol, name and address of the responsible person,
-country of origin, warnings.
+Plan room for these even when not asked: product name and function, nominal
+content with the estimated sign (icon "estimated"), INCI list in descending
+order, batch number, shelf life or PAO (icon "pao", label like "12M"),
+responsible person's name and address, country of origin, warnings, and an
+EAN-13 barcode.
+Ethiopia: the EFDA generally expects registration and labelling in English,
+often with Amharic alongside. Tell the user to confirm current EFDA rules
+before printing. Set Amharic in the "ethiopic" font and tell the user a native
+speaker must proofread it. Barcodes: use the client's real GTIN if they have
+one (issued by GS1 Ethiopia); otherwise leave the default placeholder and say
+it must be replaced. Never invent ingredients, claims or certifications.
+Mark any placeholder as a placeholder.
 
-For the Ethiopian market: the EFDA generally requires registration and labelling
-in English, with Amharic often expected alongside. Tell the user to verify the
-current EFDA requirements before printing. You are a designer, not a regulator:
-never invent ingredients, efficacy claims or certifications. Mark placeholders
-clearly as placeholders.
-
-## Design stance
-Do not make template work. Commit to a position and carry it through: either
-very reduced, with generous white space and one strong typographic moment, or
-flat and colourful with bold graphics. Avoid generic gradients, drop shadows
-and centred stacks with no tension. Work with a grid, asymmetric balance and
-deliberate jumps in scale. One strong detail beats five weak ones.
-
-If a reference image is supplied, take the stance, colour mood and typographic
-energy from it, not the actual artwork. You do not copy other brands, logos or
-illustrations. If the user asks you to rebuild an existing brand, explain
-politely that you will design something original in a similar direction.
+## Originality
+If a reference image is supplied, take its stance, colour mood and typographic
+energy, never its actual artwork. You do not reproduce other brands, logos,
+characters or illustrations. If asked to rebuild an existing brand, say you
+will design something original in a similar spirit.
 """
 
-LAYER_DOC = """A layer is an object with these fields:
-  type   text | rect | ellipse | line | path | pattern | image
-  name   short name, shown in the layer list in the interface
-  x,y    position in mm, relative to the panel's top-left corner
-  w,h    width and height in mm. For text, w is the column width and
-         wrapping happens automatically
-  fill   a hex colour "#1b2a4a" OR a gradient object
-         {"type":"linear","angle":90,"stops":["#fff","#000"]}
-         {"type":"radial","cx":50,"cy":40,"r":70,"stops":[...]}
-  stroke, strokeWidth, dash, rx, opacity, rotate, blend
+LAYER_DOC = """A layer is an object. Common fields:
+  type     one of: text, circle_text, rect, ellipse, arch, star, line, path,
+           pattern, image, barcode, icon
+  name     short name, shown in the layer list
+  x, y     position in mm from the panel's top-left
+  w, h     size in mm
+  fill     hex colour like "#1b2a4a", or a gradient object
+           {"type":"linear","angle":90,"stops":["#fff","#000"]}
+           {"type":"radial","cx":50,"cy":40,"r":70,"stops":[...]}
+  stroke, strokeWidth, dash, rx (corner radius), opacity, rotate (degrees)
 
-  text also takes: text, font (a role name from fonts, e.g. "display"),
-       size (mm, cap height plus descender), weight (300-900),
-       align (left|center|right), letterSpacing (mm, may be negative),
-       lineHeight, transform ("uppercase"), italic
-  pattern also takes: motif (dots|grid|diagonal|waves|stars|leaves|cross),
-       tile (mm), color, scale, patternRotate
-  path also takes: d (SVG path data in mm, relative to the panel)
-  image also takes: src ("asset:<id>", or "ref:0" for the first uploaded
-       image), fit (cover|contain|stretch)
+text         text, font (role name from fonts), size (mm), weight (300-900),
+             align (left|center|right), letterSpacing (mm), lineHeight,
+             transform ("uppercase"), italic. w is the column width and text
+             wraps inside it. Add h and fit:"shrink" to guarantee it fits.
+circle_text  text around a circle for seals and stamps. x, y, w (diameter),
+             text, size, font, weight, letterSpacing, start (degrees),
+             repeat:true to repeat the text so it closes the ring.
+arch         rectangle with a fully rounded top. x, y, w, h.
+star         star or scalloped burst seal. x, y, w (diameter), points
+             (default 12), inner (0.4 spiky ... 0.9 scalloped).
+line         from (x,y) to (x+w, y+h). stroke, strokeWidth.
+path         d: SVG path data in mm relative to the panel.
+pattern      repeating motif filling a shape. motif: dots, grid, diagonal,
+             waves, stars, leaves, cross, lines, rings, zigzag, tibeb.
+             tile (mm), color, scale, patternRotate, shape: rect | ellipse | arch.
+             tibeb is the woven border of Ethiopian habesha cloth: use it as a
+             band (h 4-9 mm, tile about 1.4 x h) with color and an accent in
+             color2, across a panel or framing a label. zigzag echoes mesob
+             basketry.
+image        src: "asset:<id>" or "ref:0" for the first upload.
+             fit: cover | contain | stretch.
+barcode      EAN-13. x, y, w, h (37.3 x 25.9 is 100 %), digits (12 or 13;
+             the check digit is computed), color, background.
+icon         small marks. icon: pao (with label "12M"), estimated (the e
+             mark), recycle, leaf, drop, sun, sparkle, check, dropper, jar,
+             hands. x, y, w (size), color, label.
 
-Array order is stacking order: later means in front."""
+Array order is stacking order: later layers sit on top."""
 
 
-def _panel_table(project) -> str:
+def _design_table(project) -> str:
     dl = project.get("dieline")
     if not dl:
         return "No structure decided yet."
-    return "\n".join(
-        f'{p["id"]:10s} {p["label"]:22s} {p["w"]:.1f} x {p["h"]:.1f} mm'
-        for p in dl["panels"] if p.get("printable", True)
-    )
+    rows = []
+    for p in dl["panels"]:
+        if not p.get("printable", True):
+            continue
+        w, h = artwork.design_size(p)
+        rows.append(f'{p["id"]:10s} {p["label"]:16s} {w:.1f} x {h:.1f} mm')
+    return "\n".join(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -143,37 +186,35 @@ def _t_set_brief(project, params, emit):
             ("untitled", "new ", "neues")):
         project["name"] = brief["product_name"]
     store.log(project, "brief", json.dumps(params, ensure_ascii=False))
-    emit({"type": "project_update", "field": "brief", "value": brief})
-    return {"ok": True, "brief": brief,
-            "next": "Brief saved. Next step: build_structure."}
+    emit({"type": "project_update", "field": "brief"})
+    return {"ok": True, "brief": brief}
 
 
 def _t_build_structure(project, params, emit):
     dl = dieline.build(
         params.get("box_type", "ste"),
-        params.get("width_mm", 50),
-        params.get("depth_mm", 50),
-        params.get("height_mm", 100),
-        params.get("bleed_mm", 3),
+        params.get("width_mm", 50), params.get("depth_mm", 50),
+        params.get("height_mm", 100), params.get("bleed_mm", 3),
     )
     project["dieline"] = dl
     if project.get("artwork"):
-        project["artwork"] = None  # panel sizes changed, start the art again
+        project["artwork"] = None   # panel sizes changed, start the art again
     store.log(project, "structure", f'{dl["box_short"]} {dl["dims"]}')
-    emit({"type": "project_update", "field": "dieline", "value": {"ready": True}})
+    emit({"type": "project_update", "field": "dieline"})
+    panels = []
+    for p in dl["panels"]:
+        w, h = artwork.design_size(p)
+        entry = {"id": p["id"], "label": p["label"], "w": w, "h": h,
+                 "printable": p.get("printable", True)}
+        if p.get("rotate"):
+            entry["note"] = "turned in the flat layout; design it upright"
+        panels.append(entry)
     return {
-        "ok": True,
-        "box": dl["box_name"],
-        "sheet_mm": dl["sheet"],
-        "material": dl["material_hint"],
-        "notes": dl["notes"],
-        "panels": [
-            {"id": p["id"], "label": p["label"], "w": p["w"], "h": p["h"],
-             "printable": p.get("printable", True)}
-            for p in dl["panels"]
-        ],
-        "next": "design_artwork for every printable panel. "
-                "Use exactly these panel dimensions.",
+        "ok": True, "box": dl["box_name"],
+        "blank_mm": {"width": dl["blank"]["width"], "height": dl["blank"]["height"]},
+        "material": dl["material_hint"], "notes": dl["notes"],
+        "panels": panels,
+        "next": "design_artwork for every printable panel, using these upright sizes.",
     }
 
 
@@ -181,7 +222,7 @@ def _t_write_copy(project, params, emit):
     copy = project.setdefault("copy", {})
     copy.update({k: v for k, v in params.items() if v not in (None, "")})
     store.log(project, "copy", ", ".join(params.keys()))
-    emit({"type": "project_update", "field": "copy", "value": copy})
+    emit({"type": "project_update", "field": "copy"})
     return {"ok": True, "copy": copy}
 
 
@@ -199,40 +240,34 @@ def _t_design_artwork(project, params, emit):
         spec["concept"] = params["concept"]
 
     incoming = params.get("panels") or {}
-    valid_ids = {p["id"] for p in project["dieline"]["panels"]}
-    unknown = [pid for pid in incoming if pid not in valid_ids]
+    valid = {p["id"] for p in project["dieline"]["panels"] if p.get("printable", True)}
+    unknown = [pid for pid in incoming if pid not in valid]
     for panel_id, panel in incoming.items():
-        if panel_id in valid_ids:
+        if panel_id in valid:
             spec.setdefault("panels", {})[panel_id] = panel
 
+    unknown_fonts = [k for k in (spec.get("fonts") or {}).values()
+                     if k not in artwork.FONT_CATALOG]
     artwork.ensure_layer_ids(spec)
     project["artwork"] = spec
     store.log(project, "artwork", f"panels: {', '.join(incoming.keys())}")
     emit({"type": "artwork_update"})
 
     designed = sorted(spec.get("panels", {}).keys())
-    missing = [p["id"] for p in project["dieline"]["panels"]
-               if p.get("printable", True) and p["id"] not in designed]
+    missing = sorted(valid - set(designed))
     check = layout.check(spec, project["dieline"])
-    result = {
-        "ok": True,
-        "panels_designed": designed,
-        "panels_still_empty": missing,
-        "total_layers": len(artwork.layer_index(spec)),
-        "layout_check": check,
-    }
+    result = {"ok": True, "panels_designed": designed, "panels_still_empty": missing,
+              "total_layers": len(artwork.layer_index(spec)), "layout_check": check}
     if unknown:
         result["ignored_unknown_panel_ids"] = unknown
-        result["valid_ids"] = sorted(valid_ids)
+        result["valid_ids"] = sorted(valid)
+    if unknown_fonts:
+        result["unknown_fonts"] = unknown_fonts
+        result["available_fonts"] = sorted(artwork.FONT_CATALOG)
     if missing:
-        result["note"] = ("These panels have no artwork yet. Design them in your "
-                          "next call before replying to the user.")
+        result["note"] = "Design the empty panels before replying to the user."
     if not check["ok"]:
-        result["required"] = (
-            "There are layout problems. Fix them now with edit_layers before "
-            "replying. Do not tell the user the design is done while findings "
-            "are open."
-        )
+        result["required"] = "Fix the layout findings with edit_layers before replying."
     return result
 
 
@@ -241,9 +276,8 @@ def _t_list_layers(project, params, emit):
     if not spec:
         return {"error": "There is no artwork yet."}
     layers = artwork.layer_index(spec)
-    panel = params.get("panel")
-    if panel:
-        layers = [l for l in layers if l["panel"] == panel]
+    if params.get("panel"):
+        layers = [l for l in layers if l["panel"] == params["panel"]]
     return {"ok": True, "layers": layers}
 
 
@@ -260,11 +294,10 @@ def _t_edit_layers(project, params, emit):
         check = layout.check(spec, project["dieline"])
         out["layout_check"] = check
         if not check["ok"]:
-            out["required"] = ("Not clean yet. Fix the remaining findings "
-                               "before replying.")
+            out["required"] = "Not clean yet. Fix the remaining findings before replying."
     if result["not_found"]:
         out["not_found"] = result["not_found"]
-        out["note"] = "Call list_layers to see the valid layer ids."
+        out["note"] = "Call list_layers to see valid layer ids."
     return out
 
 
@@ -274,24 +307,45 @@ def _t_check_layout(project, params, emit):
     return layout.check(project["artwork"], project["dieline"])
 
 
+def _t_look_at_design(project, params, emit):
+    if not project.get("artwork") or not project.get("dieline"):
+        return {"error": "There is nothing to look at yet."}
+    panel = params.get("panel") or "front"
+    valid = {p["id"] for p in project["dieline"]["panels"] if p.get("printable", True)}
+    if panel != "all" and panel not in valid:
+        return {"error": f"Unknown panel {panel}.", "valid": sorted(valid) + ["all"]}
+
+    request_id = visual.request()
+    emit({"type": "render_request", "request_id": request_id, "panel": panel})
+    picture = visual.wait(request_id, timeout=35)
+    if not picture:
+        picture = visual.render_locally(project, panel)
+    if not picture:
+        return {"error": "No preview could be made (the studio tab may be closed). "
+                         "Rely on the layout check for now."}
+    import base64
+    data, media_type = picture
+    return {
+        "ok": True, "panel": panel,
+        "note": "This is the actual render. Critique it, then fix what needs it.",
+        "_image": {"media_type": media_type,
+                   "data": base64.b64encode(data).decode("ascii")},
+    }
+
+
 def _t_generate_image(project, params, emit):
     if imagegen.provider() == "none":
-        return {
-            "error": "No image provider is configured. This studio runs on an "
-                     "Anthropic key alone, and Claude does not generate pixel "
-                     "images. Tell the user they can add a Gemini or OpenAI key "
-                     "under Settings if they want photographic motifs. For now, "
-                     "design the panel with vector shapes, flat colour, patterns "
-                     "and type -- which is the better answer for print anyway."
-        }
+        return {"error": "No image model is configured, so no pixel images. Keep "
+                         "designing with vector shapes, patterns and type, which is the "
+                         "better answer for print. The user can add a Gemini key under "
+                         "Settings for photographic motifs."}
     try:
-        asset = imagegen.generate(project, params.get("prompt", ""),
-                                  params.get("aspect", "1:1"))
+        asset = imagegen.generate(project, params.get("prompt", ""), params.get("aspect", "1:1"))
     except Exception as exc:
         return {"error": f"Image generation failed: {exc}"}
     emit({"type": "assets_update"})
     return {"ok": True, "asset_id": asset["id"],
-            "usage": f'Place it as a layer with src "asset:{asset["id"]}".'}
+            "usage": f'Place it as an image layer with src "asset:{asset["id"]}".'}
 
 
 # ---------------------------------------------------------------------------
@@ -300,219 +354,201 @@ class PackagingDesigner(Agent):
     key = "packaging_designer"
     title = "Packaging designer"
     icon = "box"
-    description = ("Designs folding cartons and shipping boxes: structure, copy, "
+    description = ("Designs folding cartons, mailers and gift boxes: structure, copy, "
                    "artwork as vector layers, dieline, 3D preview.")
-    greeting = ("Tell me about your product: what it is, what the brand is called, "
-                "and how big the bottle or tube is. If you have a reference image, "
-                "drop it in with your first message.")
+    greeting = ("Tell me about your product: what it is, the brand name, and the size "
+                "of the bottle, jar or tube. A reference image helps, drop it in with "
+                "your first message.")
+    starters = [
+        "Face serum, 30 ml dropper bottle, 33 mm wide, 105 mm tall. Brand: ",
+        "Body butter in a 200 ml jar, 75 mm across, 60 mm tall. Brand: ",
+        "Soap bar, 90 x 60 x 25 mm, needs a sleeve. Brand: ",
+        "Gift set: serum and cream together in a lift-off box. Brand: ",
+    ]
 
-    def system_prompt(self, project: dict) -> str:
+    def system_prompt(self) -> str:
+        # Fixed text only. Anything about the current project goes in
+        # state_block, which travels with each new message instead.
         parts = [SYSTEM, "\n## Layer format\n" + LAYER_DOC]
-        parts.append("\n## Available typefaces (role names are yours to choose)\n"
-                     + "\n".join(
-                         f"  {key:14s} {name:22s} {hint}"
-                         for key, (name, _, hint) in artwork.FONT_CATALOG.items()))
+        parts.append("\n## Typefaces (choose role names yourself, e.g. display, body, mono)\n"
+                     + "\n".join(f"  {key:14s} {name:22s} {hint}"
+                                 for key, (name, _, hint) in artwork.FONT_CATALOG.items()))
         parts.append("\n## Structures\n" + "\n".join(
-            f'  {key:8s} {meta["short"]:24s} {meta["use"]}'
+            f'  {key:9s} {meta["short"]:24s} {meta["use"]}'
             for key, meta in dieline.BOX_TYPES.items()))
-        parts.append("\n## State of this project")
-        parts.append("Brief: " + json.dumps(project.get("brief") or {},
-                                            ensure_ascii=False))
-        parts.append("Panels:\n" + _panel_table(project))
+        parts.append(
+            "\n## Project state\nEvery message from the user arrives with a "
+            "<project_state> block: brief, panel sizes, the current layers with "
+            "their ids, uploads, and whether image generation is available. It is "
+            "always current, so trust it over anything earlier in the conversation. "
+            "Layer ids in it can be used directly with edit_layers.")
+        return "\n".join(parts)
+
+    def state_block(self, project: dict) -> str:
+        lines = ["Brief: " + json.dumps(project.get("brief") or {}, ensure_ascii=False)]
+        dl = project.get("dieline")
+        if dl:
+            lines.append(f'Structure: {dl["box_name"]}, inside '
+                         f'{dl["dims"]["width"]:.0f} x {dl["dims"]["depth"]:.0f} x '
+                         f'{dl["dims"]["height"]:.0f} mm')
+        lines.append("Panels (upright design size):\n" + _design_table(project))
         spec = project.get("artwork")
         if spec:
-            parts.append(
-                f"Artwork: {len(artwork.layer_index(spec))} layers across "
-                f"{len(spec.get('panels') or {})} panels. Use edit_layers for "
-                "changes rather than rebuilding.")
+            lines.append("Concept: " + str(spec.get("concept") or "n/a"))
+            if spec.get("palette"):
+                lines.append("Palette: " + json.dumps(spec["palette"]))
+            if spec.get("fonts"):
+                lines.append("Fonts: " + json.dumps(spec["fonts"]))
+            lines.append("Layers (panel / id / type / name):")
+            for layer in artwork.layer_index(spec):
+                label = layer.get("text") or layer.get("name") or ""
+                label = " ".join(str(label).split())[:48]
+                hidden = "" if layer.get("visible", True) else " [hidden]"
+                lines.append(f'  {layer["panel"]:9s} {layer["id"]:22s} '
+                             f'{layer["type"]:11s} {label}{hidden}')
         else:
-            parts.append("Artwork: none yet.")
+            lines.append("Artwork: none yet.")
         assets = project.get("assets") or []
-        if assets:
-            parts.append("Uploaded images: " + ", ".join(
-                f'{a["name"]} (src "asset:{a["id"]}")' for a in assets))
-        if imagegen.provider() == "none":
-            parts.append("Image generation: unavailable (Anthropic key only). "
-                         "Design with vectors.")
-        else:
-            parts.append(f"Image generation: available via {imagegen.provider()}.")
-        return "\n".join(parts)
+        uploads = [a for a in assets if a.get("role") != "photo"]
+        if uploads:
+            lines.append("Uploaded images: " + ", ".join(
+                f'{a["name"]} (src "asset:{a["id"]}")' for a in uploads[-12:]))
+        lines.append("Image generation: " + (
+            "unavailable, design with vectors." if imagegen.provider() == "none"
+            else f"available via {imagegen.provider()}."))
+        return "\n".join(lines)
 
     def tools(self) -> list:
         return [
-            Tool(
-                "set_brief", "Record the key facts of the project.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "product_name": {"type": "string"},
-                        "brand": {"type": "string"},
-                        "category": {"type": "string",
-                                     "description": "e.g. face serum, body butter, soap"},
-                        "volume": {"type": "string", "description": "e.g. 30 ml, 100 g"},
-                        "market": {"type": "string", "description": "target market or country"},
-                        "languages": {"type": "array", "items": {"type": "string"}},
-                        "positioning": {"type": "string",
-                                        "description": "price tier and stance, one sentence"},
-                        "target": {"type": "string"},
-                        "finish": {"type": "string",
-                                   "description": "soft-touch, hot foil, spot UV"},
-                        "color_mode": {"type": "string", "description": "e.g. CMYK 4/0"},
-                        "notes": {"type": "string"},
-                    },
+            Tool("set_brief", "Record the key facts of the project.", {
+                "type": "object",
+                "properties": {
+                    "product_name": {"type": "string"},
+                    "brand": {"type": "string"},
+                    "category": {"type": "string", "description": "e.g. face serum, body butter"},
+                    "volume": {"type": "string", "description": "e.g. 30 ml, 100 g"},
+                    "container": {"type": "string",
+                                  "description": "the primary pack and its size, e.g. 30 ml "
+                                                 "dropper bottle, 33 mm x 105 mm"},
+                    "market": {"type": "string"},
+                    "languages": {"type": "array", "items": {"type": "string"}},
+                    "positioning": {"type": "string", "description": "price tier and stance"},
+                    "target": {"type": "string"},
+                    "finish": {"type": "string", "description": "soft-touch, hot foil, spot UV"},
+                    "color_mode": {"type": "string", "description": "e.g. CMYK 4/0"},
+                    "notes": {"type": "string"},
                 },
-                _t_set_brief, "Recording brief",
-            ),
-            Tool(
-                "build_structure",
-                "Set the style and dimensions and compute the dieline. Returns "
-                "the exact panel sizes you must design against. Dimensions are "
-                "inside measurements in mm.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "box_type": {"type": "string",
-                                     "enum": list(dieline.BOX_TYPES.keys())},
-                        "width_mm": {"type": "number", "description": "width of the front"},
-                        "depth_mm": {"type": "number", "description": "depth / side wall"},
-                        "height_mm": {"type": "number", "description": "height"},
-                        "bleed_mm": {"type": "number", "default": 3},
-                    },
-                    "required": ["box_type", "width_mm", "depth_mm", "height_mm"],
-                },
-                _t_build_structure, "Computing structure",
-            ),
-            Tool(
-                "write_copy",
-                "Store the packaging copy. Write it finished, not as filler, "
-                "except for facts only the user can supply.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "front_headline": {"type": "string"},
-                        "descriptor": {"type": "string",
-                                       "description": "what it is, two to four words"},
-                        "tagline": {"type": "string"},
-                        "benefits": {"type": "array", "items": {"type": "string"}},
-                        "back_text": {"type": "string"},
-                        "usage": {"type": "string"},
-                        "ingredients_inci": {"type": "string"},
-                        "warnings": {"type": "string"},
-                        "net_content": {"type": "string"},
-                        "responsible_person": {"type": "string"},
-                        "origin": {"type": "string"},
-                    },
-                },
-                _t_write_copy, "Writing copy",
-            ),
-            Tool(
-                "design_artwork",
-                "Build or replace the artwork of individual panels as vector "
-                "layers. You can pass several panels at once or work through "
-                "them one at a time. Panels you leave out are untouched.\n\n"
-                + LAYER_DOC,
-                {
-                    "type": "object",
-                    "properties": {
-                        "concept": {"type": "string",
-                                    "description": "The design idea in one sentence."},
-                        "palette": {
-                            "type": "object",
-                            "description": "role name to hex colour, e.g. "
-                                           "{\"bg\":\"#0f2a24\",\"accent\":\"#d9a441\"}",
-                            "additionalProperties": {"type": "string"},
-                        },
-                        "fonts": {
-                            "type": "object",
-                            "description": "role name to typeface key, e.g. "
-                                           "{\"display\":\"playfair\",\"body\":\"inter\"}",
-                            "additionalProperties": {"type": "string"},
-                        },
-                        "replace_all": {
-                            "type": "boolean",
-                            "description": "true wipes every panel first. Only for "
-                                           "a genuine redesign.",
-                        },
-                        "panels": {
-                            "type": "object",
-                            "description": "panel id to panel content, where panel "
-                                           "content is {\"background\": <colour or "
-                                           "gradient>, \"layers\": [<layer>, ...]}",
-                            "additionalProperties": {
-                                "type": "object",
-                                "properties": {
-                                    "background": {},
-                                    "layers": {"type": "array",
-                                               "items": {"type": "object"}},
-                                },
-                            },
-                        },
-                    },
-                    "required": ["panels"],
-                },
-                _t_design_artwork, "Designing artwork",
-            ),
-            Tool(
-                "list_layers",
-                "List every existing layer with its id. Call this before making "
-                "a targeted change.",
-                {"type": "object", "properties": {"panel": {"type": "string"}}},
-                _t_list_layers, "Listing layers",
-            ),
-            Tool(
-                "edit_layers",
-                "Change individual layers instead of rebuilding the artwork. "
-                "This is the right way to make corrections.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "patches": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "op": {"type": "string",
-                                           "enum": ["update", "add", "delete", "move"]},
-                                    "id": {"type": "string",
-                                           "description": "layer id from list_layers"},
-                                    "panel": {"type": "string",
-                                              "description": "op=add only"},
-                                    "layer": {"type": "object",
-                                              "description": "op=add only: the new layer"},
-                                    "set": {"type": "object",
-                                            "description": "op=update only: fields to change"},
-                                    "to": {"type": "integer",
-                                           "description": "op=move only: new index"},
-                                },
-                                "required": ["op"],
-                            },
-                        }
-                    },
-                    "required": ["patches"],
-                },
-                _t_edit_layers, "Editing layers",
-            ),
-            Tool(
-                "check_layout",
-                "Work out whether text overflows a panel, blocks overlap, or "
-                "anything sits too close to an edge.",
-                {"type": "object", "properties": {}},
-                _t_check_layout, "Checking layout",
-            ),
-            Tool(
-                "generate_image",
-                "Generate a pixel image as a design element. Only works when a "
-                "Gemini or OpenAI key is configured. Without one, keep designing "
-                "with vectors.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "prompt": {"type": "string"},
-                        "aspect": {"type": "string",
-                                   "enum": ["1:1", "3:4", "4:3", "9:16", "16:9"]},
-                    },
-                    "required": ["prompt"],
-                },
-                _t_generate_image, "Generating image",
-            ),
+            }, _t_set_brief, "Recording brief"),
+
+            Tool("build_structure",
+                 "Set the structure and inside dimensions (mm) and compute the dieline. "
+                 "Returns the upright design size of every panel.", {
+                     "type": "object",
+                     "properties": {
+                         "box_type": {"type": "string", "enum": list(dieline.BOX_TYPES)},
+                         "width_mm": {"type": "number", "description": "width of the front"},
+                         "depth_mm": {"type": "number", "description": "depth, front to back"},
+                         "height_mm": {"type": "number"},
+                         "bleed_mm": {"type": "number", "default": 3},
+                     },
+                     "required": ["box_type", "width_mm", "depth_mm", "height_mm"],
+                 }, _t_build_structure, "Computing structure"),
+
+            Tool("write_copy",
+                 "Store the packaging copy, written out in full. Placeholders only for "
+                 "facts only the user can supply.", {
+                     "type": "object",
+                     "properties": {
+                         "front_headline": {"type": "string"},
+                         "descriptor": {"type": "string"},
+                         "tagline": {"type": "string"},
+                         "benefits": {"type": "array", "items": {"type": "string"}},
+                         "back_text": {"type": "string"},
+                         "usage": {"type": "string"},
+                         "ingredients_inci": {"type": "string"},
+                         "warnings": {"type": "string"},
+                         "net_content": {"type": "string"},
+                         "responsible_person": {"type": "string"},
+                         "origin": {"type": "string"},
+                         "amharic": {"type": "string",
+                                     "description": "Amharic lines, if used, for native review"},
+                     },
+                 }, _t_write_copy, "Writing copy"),
+
+            Tool("design_artwork",
+                 "Build or replace the artwork of one or more panels as vector layers. "
+                 "Panels you leave out are untouched.\n\n" + LAYER_DOC, {
+                     "type": "object",
+                     "properties": {
+                         "concept": {"type": "string",
+                                     "description": "the design idea in one sentence"},
+                         "palette": {"type": "object",
+                                     "description": 'role to hex, e.g. {"bg":"#0f2a24","accent":"#d9a441"}',
+                                     "additionalProperties": {"type": "string"}},
+                         "fonts": {"type": "object",
+                                   "description": 'role to typeface key, e.g. {"display":"cormorant","body":"jost"}',
+                                   "additionalProperties": {"type": "string"}},
+                         "replace_all": {"type": "boolean",
+                                         "description": "wipe every panel first; only for a real redesign"},
+                         "panels": {
+                             "type": "object",
+                             "description": 'panel id to {"background": <colour or gradient>, "layers": [...]}',
+                             "additionalProperties": {
+                                 "type": "object",
+                                 "properties": {"background": {},
+                                                "layers": {"type": "array", "items": {"type": "object"}}},
+                             },
+                         },
+                     },
+                     "required": ["panels"],
+                 }, _t_design_artwork, "Designing artwork"),
+
+            Tool("look_at_design",
+                 "See the actual render of a panel, or 'all' for the whole flat layout, "
+                 "so you can judge it with your own eyes and fix it.", {
+                     "type": "object",
+                     "properties": {"panel": {"type": "string",
+                                              "description": "panel id, or 'all'"}},
+                 }, _t_look_at_design, "Looking at the design"),
+
+            Tool("list_layers", "List existing layers with their ids.",
+                 {"type": "object", "properties": {"panel": {"type": "string"}}},
+                 _t_list_layers, "Listing layers"),
+
+            Tool("edit_layers",
+                 "Change individual layers instead of rebuilding. The right way to fix things.", {
+                     "type": "object",
+                     "properties": {
+                         "patches": {
+                             "type": "array",
+                             "items": {
+                                 "type": "object",
+                                 "properties": {
+                                     "op": {"type": "string", "enum": ["update", "add", "delete", "move"]},
+                                     "id": {"type": "string", "description": "layer id"},
+                                     "panel": {"type": "string", "description": "op=add only"},
+                                     "layer": {"type": "object", "description": "op=add only"},
+                                     "set": {"type": "object", "description": "op=update only"},
+                                     "to": {"type": "integer", "description": "op=move only: new index"},
+                                 },
+                                 "required": ["op"],
+                             },
+                         }
+                     },
+                     "required": ["patches"],
+                 }, _t_edit_layers, "Editing layers"),
+
+            Tool("check_layout",
+                 "Recheck overflow, collisions, margins, contrast and barcode rules.",
+                 {"type": "object", "properties": {}}, _t_check_layout, "Checking layout"),
+
+            Tool("generate_image",
+                 "Generate a pixel image to use as a design element (needs a Gemini or "
+                 "OpenAI key). Lettering always stays vector.", {
+                     "type": "object",
+                     "properties": {"prompt": {"type": "string"},
+                                    "aspect": {"type": "string",
+                                               "enum": ["1:1", "3:4", "4:3", "9:16", "16:9"]}},
+                     "required": ["prompt"],
+                 }, _t_generate_image, "Generating image"),
         ]

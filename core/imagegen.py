@@ -83,11 +83,11 @@ def _get(url: str, headers: dict, timeout: int = 40) -> dict:
 
 
 def _gemini_auth_variants(key: str):
-    """Google has shipped several key formats. Try the plausible headers."""
-    return [
-        {"x-goog-api-key": key},
-        {"Authorization": f"Bearer {key}"},
-    ]
+    """Google has shipped several key formats. Try the plausible headers,
+    starting with whichever one worked last time."""
+    header = {"x-goog-api-key": key}
+    bearer = {"Authorization": f"Bearer {key}"}
+    return [bearer, header] if config.get("GEMINI_AUTH") == "bearer" else [header, bearer]
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,8 @@ def _probe_gemini() -> dict:
                     "all_models": len(data.get("models", []))}
 
         best = _rank_gemini(names)
-        config.write_env({"GEMINI_IMAGE_MODEL": best})
+        config.write_env({"GEMINI_IMAGE_MODEL": best,
+                          "GEMINI_AUTH": "header" if "x-goog-api-key" in headers else "bearer"})
         return {
             "ok": True, "provider": "gemini", "model": best,
             "models": names[:25],
@@ -342,7 +343,7 @@ def scene_catalog() -> list:
 
 
 def photoshoot(project: dict, render_png: bytes, scene: str = "studio",
-               notes: str = "", aspect: str = "1:1") -> dict:
+               notes: str = "", aspect: str = "1:1", front_png: bytes = None) -> dict:
     """Place the rendered package into a photographic scene."""
     which = provider()
     if which == "none":
@@ -369,11 +370,18 @@ def photoshoot(project: dict, render_png: bytes, scene: str = "studio",
         prompt += f"\n\nAlso: {notes.strip()}"
     prompt += "\n\n" + GUARDRAIL
 
-    parts = [
-        {"inline_data": {"mime_type": "image/png",
-                         "data": base64.b64encode(render_png).decode("ascii")}},
-        {"text": prompt},
-    ]
+    parts = [{"inline_data": {"mime_type": "image/png",
+                              "data": base64.b64encode(render_png).decode("ascii")}}]
+    if front_png:
+        # The 3D render is small and slightly angled, so fine lettering is soft.
+        # The flat front at full resolution is the model's reference for what
+        # the print must say and look like, letter for letter.
+        parts.append({"inline_data": {"mime_type": "image/png",
+                                      "data": base64.b64encode(front_png).decode("ascii")}})
+        prompt += ("\n\nThe second image is the exact flat artwork of the front "
+                   "panel. Use it as the reference for every letter, colour and "
+                   "graphic on the front of the package.")
+    parts.append({"text": prompt})
     data, mime = _gemini_call(parts, aspect)
     ext = {"image/png": "png", "image/jpeg": "jpg",
            "image/webp": "webp"}.get(mime, "png")
