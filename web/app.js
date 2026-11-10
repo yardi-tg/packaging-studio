@@ -668,7 +668,154 @@ async function loadThree() {
   try { data = await api(`/api/projects/${state.projectId}/textures`); }
   catch (err) { toast(err.message, true); return; }
   if (!state.three) { state.three = createThree($("three")); paintSurfaces(); }
+  data.board = boardFinish(state.project?.brief);
   state.three.build(data);
+}
+
+/* How the printed board itself is finished, from the brief's wording. */
+function boardFinish(brief) {
+  const f = String(brief?.finish || "").toLowerCase();
+  if (/soft[\s-]?touch|velvet|suede/.test(f)) return { rough: 0.84, coat: 0, name: "soft-touch" };
+  if (/uncoated|kraft|natural board|recycled board/.test(f)) return { rough: 0.9, coat: 0, name: "uncoated" };
+  if (/gloss/.test(f) && !/spot/.test(f)) return { rough: 0.3, coat: 0.55, name: "gloss" };
+  return { rough: 0.6, coat: 0.12, name: "matte" };
+}
+
+/* A box whose edges are rounded like a folded carton's, with the same faces,
+   material slots and texture mapping as THREE.BoxGeometry. Each face's print
+   wraps halfway round the bend, the way ink runs over a crease. */
+function roundedBoxGeometry(width, height, depth, radius, steps = 4) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2, depth / 2) * 0.999);
+  const inner = { x: width / 2 - r, y: height / 2 - r, z: depth / 2 - r };
+  const positions = [], normals = [], uvs = [], indices = [];
+  const geometry = new THREE.BufferGeometry();
+  let vertices = 0, groupStart = 0;
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+
+  function fractions(length) {
+    const f = r / length;
+    if (f <= 0) return [0, 1];
+    const out = [];
+    for (let i = 0; i <= steps; i++) out.push((f * i) / steps, 1 - f + (f * i) / steps);
+    return [...new Set(out.map((v) => Math.min(1, Math.max(0, +v.toFixed(6)))))].sort((a, b) => a - b);
+  }
+
+  function plane(u, v, w, udir, vdir, pw, ph, pd, material) {
+    const fu = fractions(Math.abs(pw)), fv = fractions(Math.abs(ph));
+    const cols = fu.length;
+    for (const fy of fv) {
+      for (const fx of fu) {
+        const p = { x: 0, y: 0, z: 0 };
+        p[u] = (fx * pw - pw / 2) * udir;
+        p[v] = (fy * ph - ph / 2) * vdir;
+        p[w] = pd / 2;
+        const q = { x: clamp(p.x, inner.x), y: clamp(p.y, inner.y), z: clamp(p.z, inner.z) };
+        let nx = p.x - q.x, ny = p.y - q.y, nz = p.z - q.z;
+        const len = Math.hypot(nx, ny, nz);
+        if (len < 1e-9) { nx = ny = nz = 0; if (w === "x") nx = Math.sign(pd); else if (w === "y") ny = Math.sign(pd); else nz = Math.sign(pd); }
+        else { nx /= len; ny /= len; nz /= len; }
+        positions.push(q.x + nx * r, q.y + ny * r, q.z + nz * r);
+        normals.push(nx, ny, nz);
+        uvs.push(fx, 1 - fy);
+      }
+    }
+    let count = 0;
+    for (let iy = 0; iy < fv.length - 1; iy++) {
+      for (let ix = 0; ix < cols - 1; ix++) {
+        const a = vertices + ix + cols * iy, b = vertices + ix + cols * (iy + 1);
+        const c = vertices + ix + 1 + cols * (iy + 1), d = vertices + ix + 1 + cols * iy;
+        indices.push(a, b, d, b, c, d);
+        count += 6;
+      }
+    }
+    geometry.addGroup(groupStart, count, material);
+    groupStart += count;
+    vertices += cols * fv.length;
+  }
+
+  plane("z", "y", "x", -1, -1, depth, height, width, 0);
+  plane("z", "y", "x", 1, -1, depth, height, -width, 1);
+  plane("x", "z", "y", 1, 1, width, depth, height, 2);
+  plane("x", "z", "y", 1, -1, width, depth, -height, 3);
+  plane("x", "y", "z", 1, -1, width, height, depth, 4);
+  plane("x", "y", "z", -1, -1, width, height, -depth, 5);
+  geometry.setIndex(indices);
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  return geometry;
+}
+
+/* Data maps for the physical material, packed the way three.js reads them:
+   red = relief (bumpMap), green = roughness, blue = metalness. Linear, not
+   sRGB: these are numbers, not colours. */
+function dataTexture(canvas) {
+  const t = new THREE.CanvasTexture(canvas);
+  t.anisotropy = 4;
+  return t;
+}
+
+const paperMaps = new Map();
+function paperMap(board) {
+  // The tooth of printed board: roughness that wanders a little.
+  if (paperMaps.has(board.name)) return paperMaps.get(board.name);
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) {
+    img.data[i] = 128;
+    img.data[i + 1] = Math.round(255 * Math.min(1, Math.max(0, board.rough + (Math.random() - 0.5) * 0.08)));
+    img.data[i + 2] = 0;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = dataTexture(c);
+  paperMaps.set(board.name, t);
+  return t;
+}
+
+/* Turn the server's finish maps (three tiles: foil, spot UV, emboss) into
+   relief, roughness and metalness for one face. */
+function finishMaps(url, board) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const tw = img.naturalWidth || 512, th = Math.round((img.naturalHeight || 1536) / 3);
+      const k = Math.min(1, 1400 / Math.max(tw, th));
+      const w = Math.max(2, Math.round(tw * k)), h = Math.max(2, Math.round(th * k));
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      const tile = (i, blur) => {
+        ctx.filter = blur ? `blur(${blur}px)` : "none";
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, i * th, tw, th, 0, 0, w, h);
+        ctx.filter = "none";
+        return ctx.getImageData(0, 0, w, h).data;
+      };
+      const foil = tile(0, 0), spot = tile(1, 0);
+      // Softened for the relief, so an emboss has shoulders, not cliffs.
+      const relief = tile(2, Math.max(1, w / 500));
+      const out = ctx.createImageData(w, h);
+      let emboss = false;
+      for (let i = 0; i < out.data.length; i += 4) {
+        const f = foil[i] / 255, g = spot[i] / 255, e = relief[i] / 255;
+        if (e > 0.05) emboss = true;
+        let rough = board.rough + (Math.random() - 0.5) * 0.08;
+        rough = rough * (1 - g) + 0.1 * g;
+        rough = rough * (1 - f) + 0.18 * f;
+        out.data[i] = Math.round(255 * (0.5 + 0.3 * e));
+        out.data[i + 1] = Math.round(255 * Math.min(1, Math.max(0.04, rough)));
+        out.data[i + 2] = Math.round(255 * f);
+        out.data[i + 3] = 255;
+      }
+      ctx.putImageData(out, 0, 0);
+      resolve({ texture: dataTexture(c), emboss });
+    };
+    img.onerror = () => reject(new Error("finish map failed"));
+    img.src = url;
+  });
 }
 
 const SURFACES = [
@@ -920,40 +1067,57 @@ function createThree(canvas) {
     return t;
   };
 
-  // printed board: slightly rough, with a thin varnish that catches the light
-  function face(entry, fallback) {
+  // Printed board: the roughness comes from a map with a little tooth in it,
+  // the varnish from the brief. Foil, spot UV and emboss arrive as a second
+  // map once the browser has drawn it.
+  function face(entry, fallback, board) {
     const Material = THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial;
-    const opts = { roughness: 0.6, metalness: 0, envMapIntensity: 0.45,
-                   clearcoat: 0.16, clearcoatRoughness: 0.5 };
+    const opts = { roughness: 1, roughnessMap: paperMap(board), metalness: 0,
+                   envMapIntensity: 0.5, clearcoat: board.coat, clearcoatRoughness: 0.42 };
     if (entry) opts.map = tex(entry.url); else opts.color = fallback;
-    return new Material(opts);
+    const material = new Material(opts);
+    if (entry && entry.finish) {
+      finishMaps(entry.finish, board).then(({ texture, emboss }) => {
+        material.roughnessMap = texture;
+        material.metalnessMap = texture;
+        material.metalness = 1;
+        material.envMapIntensity = 0.85;
+        if (emboss) { material.bumpMap = texture; material.bumpScale = 0.06; }
+        material.needsUpdate = true;
+        invalidate(8);
+      }).catch(() => {});
+    }
+    return material;
   }
 
-  function box(w, h, d, faces) {
+  function box(w, h, d, faces, board, radius) {
     const side = "#ded9d1";
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [
-      face(faces.right, side), face(faces.left, side), face(faces.top, side),
-      face(faces.bottom, side), face(faces.front, side), face(faces.back, side),
+    const geometry = radius > 0 ? roundedBoxGeometry(w, h, d, radius) : new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geometry, [
+      face(faces.right, side, board), face(faces.left, side, board), face(faces.top, side, board),
+      face(faces.bottom, side, board), face(faces.front, side, board), face(faces.back, side, board),
     ]);
     mesh.castShadow = true; mesh.receiveShadow = true;
     return mesh;
   }
 
-  function makePackage(t, dims, scale) {
+  function makePackage(t, dims, scale, board) {
+    // Folded board turns a corner over about its own thickness.
+    const radius = 0.7 * scale;
     const w = dims.width * scale, h = dims.height * scale, d = dims.depth * scale;
     const group = new THREE.Group();
     if (t.lid_front && t.top) {
       // lid and base: the lid is a separate, slightly larger box over the top
-      const base = box(w, h, d, { front: t.front, back: t.back, left: t.left, right: t.right, bottom: t.bottom });
+      const base = box(w, h, d, { front: t.front, back: t.back, left: t.left, right: t.right, bottom: t.bottom }, board, radius);
       base.position.y = h / 2;
       const lidH = (t.lid_front.h || dims.height * 0.35) * scale;
       const lw = (t.top.w || dims.width + 3) * scale, ld = (t.top.h || dims.depth + 3) * scale;
       const lid = box(lw, lidH, ld, { top: t.top, front: t.lid_front, back: t.lid_back,
-                                      left: t.lid_left, right: t.lid_right });
+                                      left: t.lid_left, right: t.lid_right }, board, radius);
       lid.position.y = h - lidH / 2 + 0.6 * scale;
       group.add(base, lid);
     } else {
-      const mesh = box(w, h, d, t);
+      const mesh = box(w, h, d, t, board, radius);
       mesh.position.y = h / 2;
       group.add(mesh);
     }
@@ -966,14 +1130,15 @@ function createThree(canvas) {
     const biggest = Math.max(data.dims.width, data.dims.height, data.dims.depth);
     const scale = 2.6 / biggest;
     current = data;
-    root.add(makePackage(data.textures, data.dims, scale));
+    const board = data.board || boardFinish(null);
+    root.add(makePackage(data.textures, data.dims, scale, board));
     const footprint = Math.max(data.dims.width, data.dims.depth) * scale;
     contact.scale.set(footprint * 2.1, footprint * 2.1, 1);
     root.add(contact);
     if (ctl.surface === "shelf") {
       const gap = data.dims.width * scale * 1.25;
       for (const offset of [-gap, gap]) {
-        const clone = makePackage(data.textures, data.dims, scale);
+        const clone = makePackage(data.textures, data.dims, scale, board);
         clone.position.x = offset;
         clone.rotation.y = offset < 0 ? 0.1 : -0.1;
         root.add(clone);

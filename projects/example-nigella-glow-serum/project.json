@@ -17,7 +17,7 @@
     ],
     "positioning": "Quiet premium. Locally sourced oils, restrained design.",
     "color_mode": "CMYK 4/0",
-    "finish": "Matt lamination, gold hot foil on the seal"
+    "finish": "Matte varnish; gold hot foil and emboss on the seal, spot UV on the leaf pattern"
   },
   "dieline": {
     "box_type": "ste",
@@ -968,7 +968,8 @@
             "color": "#1f5747",
             "patternRotate": 24,
             "id": "front-3-3326",
-            "visible": true
+            "visible": true,
+            "finish": "spot_uv"
           },
           {
             "type": "ellipse",
@@ -1003,7 +1004,11 @@
             "inner": 0.9,
             "fill": "#c9a24e",
             "id": "front-5-50f9",
-            "visible": true
+            "visible": true,
+            "finish": [
+              "foil",
+              "emboss"
+            ]
           },
           {
             "type": "circle_text",
@@ -1041,7 +1046,8 @@
             "w": 5,
             "color": "#c9a24e",
             "id": "front-8-7898",
-            "visible": true
+            "visible": true,
+            "finish": "foil"
           },
           {
             "type": "text",
@@ -1380,7 +1386,8 @@
             "h": 9,
             "fill": "#c9a24e",
             "id": "top-1-0c39",
-            "visible": true
+            "visible": true,
+            "finish": "foil"
           },
           {
             "type": "text",

@@ -17,6 +17,7 @@ millimetres.
 from __future__ import annotations
 import html
 import math
+import re
 import uuid
 
 FONT_CATALOG = {
@@ -848,9 +849,83 @@ def _placement(panel_geo: dict) -> str:
     return f"translate({x:.2f} {y:.2f})"
 
 
+# Print finishes: effects applied on top of the ink. Each becomes its own
+# plate for the printer, and the 3D preview shows it as metal, gloss or relief.
+FINISHES = ("foil", "spot_uv", "emboss")
+_FINISH_WORDS = {
+    "foil": "foil", "hot_foil": "foil", "hotfoil": "foil", "gold_foil": "foil",
+    "silver_foil": "foil", "cold_foil": "foil", "metallic": "foil",
+    "spot_uv": "spot_uv", "spotuv": "spot_uv", "uv": "spot_uv", "spot_gloss": "spot_uv",
+    "gloss": "spot_uv", "varnish": "spot_uv",
+    "emboss": "emboss", "embossed": "emboss", "deboss": "emboss", "debossed": "emboss",
+    "blind_emboss": "emboss", "raised": "emboss",
+}
+
+
+def layer_finishes(layer: dict) -> set:
+    """The finishes a layer asks for: "foil", ["foil", "emboss"], "spot UV"..."""
+    raw = layer.get("finish")
+    if isinstance(raw, str):
+        words = re.split(r"[,+/&]|\band\b", raw.lower())
+    elif isinstance(raw, (list, tuple)):
+        words = [str(w).lower() for w in raw]
+    else:
+        return set()
+    out = set()
+    for word in words:
+        key = re.sub(r"[\s-]+", "_", word.strip())
+        if key in _FINISH_WORDS:
+            out.add(_FINISH_WORDS[key])
+    return out
+
+
+def finishes_in(spec: dict, panel_ids=None) -> set:
+    found = set()
+    for panel_id, panel in ((spec or {}).get("panels") or {}).items():
+        if panel_ids is not None and panel_id not in panel_ids:
+            continue
+        for layer in panel.get("layers") or []:
+            if layer.get("visible") is not False:
+                found |= layer_finishes(layer)
+    return found
+
+
+def _finish_paint(finish: str, on: str, off: str):
+    """Paint one finish for a mask or a plate.
+
+    Foil is opaque and goes on after the ink, so anything designed to sit on
+    top of it must be knocked out of the foil: those layers paint "off".
+    Varnish and emboss cover whatever is printed beneath and above them, so
+    other layers are simply left out (None) and the shapes add up.
+    """
+    if finish == "foil":
+        return lambda layer: on if "foil" in layer_finishes(layer) else off
+    return lambda layer: on if finish in layer_finishes(layer) else None
+
+
+def _recolor(defs: list, color: str, made: dict) -> str:
+    """A filter that turns whatever a layer draws into one flat colour, edges
+    and all, so text, patterns and images can all be masks."""
+    if color not in made:
+        fid = "rc" + color.lstrip("#")
+        r, g, b = (int(color[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        defs.append(
+            f'<filter id="{fid}" filterUnits="userSpaceOnUse" x="-2000" y="-2000" '
+            f'width="5000" height="5000" color-interpolation-filters="sRGB">'
+            f'<feColorMatrix type="matrix" values="0 0 0 0 {r:.4f} 0 0 0 0 {g:.4f} '
+            f'0 0 0 0 {b:.4f} 0 0 0 1 0"/></filter>')
+        made[color] = fid
+    return made[color]
+
+
 def render_panel(spec: dict, panel_geo: dict, defs: list, assets: dict = None,
-                 clip: bool = True, bleed: dict = None) -> str:
-    """Render one panel, upright design space turned into place on the sheet."""
+                 clip: bool = True, bleed: dict = None, paint=None,
+                 ground: str = None) -> str:
+    """Render one panel, upright design space turned into place on the sheet.
+
+    paint, if given, recolours every layer: paint(layer) -> "#rrggbb". With
+    ground as the background colour, that makes finish masks and plates.
+    """
     panels = spec.get("panels") or {}
     panel = panels.get(panel_geo["id"]) or panels.get(panel_geo.get("face")) or {}
     fonts = spec.get("fonts") or {}
@@ -867,6 +942,7 @@ def render_panel(spec: dict, panel_geo: dict, defs: list, assets: dict = None,
 
     cid = "c" + uuid.uuid4().hex[:8]
     out = []
+    recolored = ctx.setdefault("_recolored", {})
     if clip:
         defs.append(f'<clipPath id="{cid}"><rect x="{-bl:.2f}" y="{-bt:.2f}" '
                     f'width="{w + bl + br:.2f}" height="{h + bt + bb:.2f}"/></clipPath>')
@@ -874,7 +950,7 @@ def render_panel(spec: dict, panel_geo: dict, defs: list, assets: dict = None,
     out.append(f'<g id="panel-{_esc(panel_geo["id"])}" data-panel="{_esc(panel_geo["id"])}" '
                f'transform="{_placement(panel_geo)}"{clip_attr}>')
 
-    bg = panel.get("background")
+    bg = ground if paint else panel.get("background")
     if bg:
         bg_layer = bg if isinstance(bg, dict) else {"fill": bg}
         if "fill" not in bg_layer and bg_layer.get("type") in ("linear", "radial"):
@@ -890,8 +966,14 @@ def render_panel(spec: dict, panel_geo: dict, defs: list, assets: dict = None,
             continue
         try:
             drawn = _extend_into_bleed(layer, w, h, bleed) if bleed else layer
+            tint = ""
+            if paint:
+                colour = paint(layer)
+                if colour is None:
+                    continue
+                tint = f' filter="url(#{_recolor(defs, colour, recolored)})"'
             out.append(f'<g data-layer="{_esc(layer.get("id",""))}" '
-                       f'data-name="{_esc(layer.get("name",""))}">'
+                       f'data-name="{_esc(layer.get("name",""))}"{tint}>'
                        + renderer(drawn, defs, ctx) + "</g>")
         except Exception as exc:  # one broken layer must never kill the page
             out.append(f'<!-- layer error {_esc(layer.get("id"))}: {_esc(exc)} -->')
@@ -900,7 +982,8 @@ def render_panel(spec: dict, panel_geo: dict, defs: list, assets: dict = None,
 
 
 def render_flat(spec: dict, dieline: dict, assets: dict = None,
-                only_printable: bool = True, with_bleed: bool = True) -> str:
+                only_printable: bool = True, with_bleed: bool = True,
+                paint=None, ground: str = None) -> str:
     """Every panel rendered onto the flat layout, without the SVG wrapper."""
     defs: list = []
     body = []
@@ -909,7 +992,8 @@ def render_flat(spec: dict, dieline: dict, assets: dict = None,
         if only_printable and not panel_geo.get("printable", True):
             continue
         body.append(render_panel(spec, panel_geo, defs, assets,
-                                 bleed=edges.get(panel_geo["id"])))
+                                 bleed=edges.get(panel_geo["id"]),
+                                 paint=paint, ground=ground))
     return f"<defs>{''.join(defs)}</defs>" + "".join(body)
 
 
@@ -924,17 +1008,55 @@ def _style_block(font_css: str = None) -> str:
 
 
 def render_panel_svg(spec: dict, panel_geo: dict, assets: dict = None,
-                     scale: float = 8.0, font_css: str = None) -> str:
-    """One panel upright as a standalone SVG, for instance as a 3D texture."""
+                     scale: float = 8.0, font_css: str = None,
+                     finish_mask: bool = False) -> str:
+    """One panel upright as a standalone SVG, for instance as a 3D texture.
+
+    finish_mask=True draws the finish maps instead, three tiles stacked top
+    to bottom: foil, spot UV, emboss, each white where it applies. The 3D view
+    turns them into metal, gloss and relief.
+    """
     defs: list = []
     w, h = design_size(panel_geo)
     upright = {**panel_geo, "x": 0, "y": 0, "w": w, "h": h, "dw": w, "dh": h, "rotate": 0}
-    body = render_panel(spec, upright, defs, assets)
+    if not finish_mask:
+        body = render_panel(spec, upright, defs, assets)
+        return (
+            f'<svg {SVG_NS} width="{w*scale:.0f}" height="{h*scale:.0f}" '
+            f'viewBox="0 0 {w:.2f} {h:.2f}">'
+            f'{_style_block(font_css)}<defs>{"".join(defs)}</defs>'
+            f'<rect width="{w:.2f}" height="{h:.2f}" fill="#ffffff"/>{body}</svg>'
+        )
+    tiles = []
+    for i, finish in enumerate(FINISHES):
+        tiles.append(f'<g transform="translate(0 {i * h:.2f})">'
+                     + render_panel(spec, upright, defs, assets,
+                                    paint=_finish_paint(finish, "#ffffff", "#000000"),
+                                    ground="#000000")
+                     + "</g>")
     return (
-        f'<svg {SVG_NS} width="{w*scale:.0f}" height="{h*scale:.0f}" '
-        f'viewBox="0 0 {w:.2f} {h:.2f}">'
+        f'<svg {SVG_NS} width="{w*scale:.0f}" height="{3*h*scale:.0f}" '
+        f'viewBox="0 0 {w:.2f} {3*h:.2f}">'
         f'{_style_block(font_css)}<defs>{"".join(defs)}</defs>'
-        f'<rect width="{w:.2f}" height="{h:.2f}" fill="#ffffff"/>{body}</svg>'
+        f'<rect width="{w:.2f}" height="{3*h:.2f}" fill="#000000"/>{"".join(tiles)}</svg>'
+    )
+
+
+def plate_svg(spec: dict, dieline: dict, finish: str, assets: dict = None,
+              font_css: str = None) -> str:
+    """One finish as a printer's plate on the flat layout: black where the
+    foil, varnish or emboss goes, white elsewhere, in register 1:1 with the
+    artwork file."""
+    sheet = dieline["sheet"]
+    art = render_flat(spec, dieline, assets, paint=_finish_paint(finish, "#000000", "#ffffff"),
+                      ground="#ffffff")
+    name = {"foil": "Hot foil", "spot_uv": "Spot UV varnish", "emboss": "Emboss"}.get(finish, finish)
+    return (
+        f'<svg {SVG_NS} width="{sheet["width"]}mm" height="{sheet["height"]}mm" '
+        f'viewBox="0 0 {sheet["width"]} {sheet["height"]}">'
+        f'<title>{_esc(name)} plate</title>{_style_block(font_css)}'
+        f'<rect width="{sheet["width"]}" height="{sheet["height"]}" fill="#fff"/>'
+        f'{art}</svg>'
     )
 
 

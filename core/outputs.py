@@ -14,8 +14,9 @@ def render(project: dict, mode: str = "flat", panel: str = None, labels: bool = 
            assets: dict = None, scale: float = None) -> str:
     """One SVG view of the project.
 
-    mode: flat (artwork on the dieline), print (artwork only), dieline, or
-    panel (one face upright). Raises ValueError without a structure and
+    mode: flat (artwork on the dieline), print (artwork only), dieline,
+    panel (one face upright) or finish (that face's foil / spot UV / emboss
+    map for the 3D view). Raises ValueError without a structure and
     LookupError for an unknown panel.
     """
     dl = project.get("dieline")
@@ -26,13 +27,14 @@ def render(project: dict, mode: str = "flat", panel: str = None, labels: bool = 
 
     if mode == "dieline":
         return dieline.to_svg(dl, show_labels=True, show_dimensions=True)
-    if mode == "panel":
+    if mode in ("panel", "finish"):
         geo = next((p for p in dl["panels"] if p["id"] == panel), None)
         if not geo:
             raise LookupError("Unknown panel")
         extra = {"scale": float(scale)} if scale else {}
         return artwork.render_panel_svg(spec, geo, assets,
-                                        font_css=fonts.embed_css(spec, [geo["id"]]), **extra)
+                                        font_css=fonts.embed_css(spec, [geo["id"]]),
+                                        finish_mask=mode == "finish", **extra)
     css = fonts.embed_css(spec)
     if mode == "print":
         return artwork.full_svg(spec, dl, assets, with_dieline=False, font_css=css)
@@ -41,11 +43,13 @@ def render(project: dict, mode: str = "flat", panel: str = None, labels: bool = 
 
 def texture_panels(project: dict) -> list:
     """The faces that get printed, with the upright size each is drawn at."""
+    spec = project.get("artwork") or {}
     out = []
     for geo in (project.get("dieline") or {}).get("panels", []):
         if geo.get("printable", True):
             w, h = artwork.design_size(geo)
-            out.append({"id": geo["id"], "label": geo["label"], "w": w, "h": h})
+            out.append({"id": geo["id"], "label": geo["label"], "w": w, "h": h,
+                        "finish": bool(artwork.finishes_in(spec, [geo["id"]]))})
     return out
 
 
@@ -79,6 +83,11 @@ def export_plan(project: dict) -> list:
                                     font_css=fonts.embed_css(spec))),
         (f"{base}-spec-sheet.pdf", pdf, lambda a: pdfwriter.spec_sheet_pdf(project)),
     ]
+    for finish in artwork.FINISHES:
+        if finish in artwork.finishes_in(spec):
+            plan.append((f"{base}-plate-{finish.replace('_', '-')}-{size}.svg", svg,
+                         lambda a, f=finish: artwork.plate_svg(spec, dl, f, a,
+                                                               font_css=fonts.embed_css(spec))))
     for geo in dl["panels"]:
         if geo.get("printable", True):
             plan.append((f"{base}-panel-{geo['id']}.svg", svg,
@@ -134,6 +143,12 @@ FILES
 
 *-artwork-with-dieline-*.svg
     Both on top of each other. Good for checking, not for printing.
+
+*-plate-foil-*.svg, *-plate-spot-uv-*.svg, *-plate-emboss-*.svg
+    Only if the design uses them: one plate per finish, black where the foil,
+    varnish or emboss goes. Same size and position as the artwork file, so
+    they register 1:1. Your printer makes the foil block or emboss die from
+    these.
 
 *-panel-*.svg
     Each face of the box on its own.

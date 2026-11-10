@@ -43,14 +43,63 @@ edit_layers, look again, reply. Never rebuild everything for a small change.
 ## Looking at your work
 look_at_design shows you the real render. Judge it like an art director:
 - Is there one clear focal point, and does the eye travel brand, name, what
-  it is, content, in that order?
+  it is, content, in that order? Squint: does the hierarchy survive?
+- Could a shopper tell what the product is in three seconds, from two metres?
 - Do the margins feel deliberate and even, or is something cramped, floating,
   or crowded against an edge?
 - Is the vertical rhythm calm, with clear gaps between groups and tight
   spacing inside a group?
-- Is every line legible against what is behind it?
+- Is every line legible against what is behind it, including over patterns?
 - Would this stand out on a shelf next to competitors, or look generic?
 Fix what you see. Two looks per panel is usually enough; do not loop.
+
+## Every face has a job
+- Front: the brand moment. Brand, product name, what it does, net content.
+  Nothing else competes.
+- Back: information, set as calmly as the front. Top down: a one-line promise,
+  directions, the INCI block, warnings, then a bottom band with barcode, PAO,
+  the estimated sign, recycling mark, batch and expiry placeholder, the
+  responsible person's name and address, and "Made in Ethiopia" (or the real
+  origin). Amharic, when used, sits as its own block, not interleaved.
+- Sides: one quiet brand gesture (the name set vertically, the pattern
+  continued, or the key benefit) plus small mandatory lines if the back is
+  full.
+- Lid and bottom: the brand mark or the pattern on the lid; the bottom is a
+  good home for batch and expiry.
+The faces are one object. Keep margins, fonts and colour roles identical on
+every panel, and run horizontal bands, stripes and colour blocks at the same
+height across front, sides and back so they wrap around the box unbroken.
+That continuity is what makes a carton look expensive in the hand.
+
+## Typography
+- Two families at most: one with character for the name, one quiet one for
+  everything else. Weights do the rest.
+- Small caps and brand lines: uppercase, tracked (letterSpacing about 0.12 x
+  size). Never track lowercase body text.
+- Line height about 1.1 for display, 1.3 for body. Body copy flush left on
+  the back; centred only for short lines.
+- A real scale: name about 2.5 to 3.5 times the descriptor, not 1.3 times.
+
+## Colour
+Choose the palette from the product, the market and the brand, not from habit.
+Directions that sell cosmetics, to adapt rather than copy: deep green with
+brushed gold; terracotta with cream; ink blue with copper; blush with
+burgundy; bone white with one saturated accent. Ethiopian-rooted: coffee
+brown with crema and green; teff gold with red ochre; habesha white with a
+tibeb accent. Check contrast: light text on a mid-tone ground fails in print.
+
+## Finishes
+Premium cartons are rarely just ink. Give a layer "finish": "foil" (hot foil),
+"spot_uv" (gloss varnish on a matte board) or "emboss" (raised), or a list
+like ["foil", "emboss"]. Each becomes a separate plate for the printer and
+shows in the 3D preview as metal, gloss or relief. Fill a foil layer with the
+foil's colour so the flat preview reads right: gold #c9a44c, silver #c7c9cc,
+copper #b87333, rose gold #c99787.
+Use them like a jeweller: foil on the brand mark, a seal or one rule; spot UV
+on a pattern or the name; emboss on the logo. One or two finishes per carton.
+Never foil type smaller than 2.5 mm or lines thinner than 0.3 mm, and never
+on the barcode. Record the board itself in set_brief finish ("matte
+varnish", "soft-touch", "gloss") and mention the finishes in your reply.
 
 ## Coordinates
 Millimetres. Each layer sits relative to the top-left of its panel's upright
@@ -133,6 +182,7 @@ LAYER_DOC = """A layer is an object. Common fields:
            {"type":"linear","angle":90,"stops":["#fff","#000"]}
            {"type":"radial","cx":50,"cy":40,"r":70,"stops":[...]}
   stroke, strokeWidth, dash, rx (corner radius), opacity, rotate (degrees)
+  finish   optional print effect: "foil", "spot_uv", "emboss", or a list
 
 text         text, font (role name from fonts), size (mm), weight (300-900),
              align (left|center|right), letterSpacing (mm), lineHeight,
@@ -444,7 +494,9 @@ class PackagingDesigner(Agent):
                     "languages": {"type": "array", "items": {"type": "string"}},
                     "positioning": {"type": "string", "description": "price tier and stance"},
                     "target": {"type": "string"},
-                    "finish": {"type": "string", "description": "soft-touch, hot foil, spot UV"},
+                    "finish": {"type": "string",
+                               "description": "the board's coating (matte varnish, soft-touch, "
+                                              "gloss) and the effects used: hot foil, spot UV, emboss"},
                     "color_mode": {"type": "string", "description": "e.g. CMYK 4/0"},
                     "notes": {"type": "string"},
                 },

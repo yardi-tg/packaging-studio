@@ -258,6 +258,10 @@ class Handler(BaseHTTPRequestHandler):
             encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
             out[face["id"]] = {"url": f"data:image/svg+xml;base64,{encoded}",
                                "w": face["w"], "h": face["h"], "label": face["label"]}
+            if face["finish"]:
+                mask = outputs.render(project, "finish", face["id"], assets=assets, scale=10)
+                out[face["id"]]["finish"] = ("data:image/svg+xml;base64," +
+                                             base64.b64encode(mask.encode("utf-8")).decode("ascii"))
         self._json({"textures": out, "dims": dl["dims"], "box_type": dl["box_type"]})
 
     # -- POST ---------------------------------------------------------------

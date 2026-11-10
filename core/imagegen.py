@@ -319,6 +319,23 @@ SCENES = {
                   "shade, leaves casting soft patterns across it. Natural "
                   "daylight, slight warmth, shallow depth of field.",
     },
+    "heritage": {
+        "label": "Ethiopian heritage",
+        "blurb": "Woven basket, habesha cloth",
+        "prompt": "The package standing on the lid of a hand-woven Ethiopian basket, "
+                  "a white cotton habesha cloth with a colourful woven border draped "
+                  "behind it, a clay coffee pot and a few roasted coffee beans softly "
+                  "out of focus. Warm late-afternoon window light, natural and "
+                  "respectful, editorial product photography.",
+    },
+    "vanity": {
+        "label": "Vanity table",
+        "blurb": "Mirror, warm glow, everyday",
+        "prompt": "The package on a light wooden vanity table in front of a round "
+                  "mirror, a ceramic dish and a small glass vase nearby, softly out "
+                  "of focus. Warm, flattering morning light from a window to the "
+                  "side. Lifestyle beauty photography.",
+    },
     "dark": {
         "label": "Dark and moody",
         "blurb": "Hard light, deep shadow",

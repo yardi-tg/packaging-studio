@@ -479,10 +479,23 @@ async function textures(p) {
   const faces = dl.panels.filter((g) => g.printable !== false);
   const entries = await Promise.all(faces.map(async (g) => {
     const svg = await renderSvg(p, { mode: "panel", panel: g.id, scale: 10 });
-    return [g.id, { url: "data:image/svg+xml;base64," + textToBase64(svg),
-                    w: g.dw ?? g.w, h: g.dh ?? g.h, label: g.label }];
+    const entry = { url: "data:image/svg+xml;base64," + textToBase64(svg),
+                    w: g.dw ?? g.w, h: g.dh ?? g.h, label: g.label };
+    if (hasFinish(p.artwork, g.id)) {
+      const mask = await renderSvg(p, { mode: "finish", panel: g.id, scale: 10 });
+      entry.finish = "data:image/svg+xml;base64," + textToBase64(mask);
+    }
+    return [g.id, entry];
   }));
   return { textures: Object.fromEntries(entries), dims: dl.dims, box_type: dl.box_type };
+}
+
+/* Same test as artwork.layer_finishes on the server, loosely: any layer on
+   this face that asks for foil, varnish or emboss. */
+function hasFinish(spec, panelId) {
+  const layers = spec?.panels?.[panelId]?.layers || [];
+  return layers.some((l) => l.visible !== false && l.finish &&
+    /foil|metallic|uv|gloss|varnish|emboss|deboss|raised/i.test([].concat(l.finish).join(" ")));
 }
 
 async function listExports(pid) {

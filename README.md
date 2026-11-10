@@ -84,6 +84,12 @@ presets, filmic lighting; save a frame as PNG.
 
 ![The 3D preview](docs/screenshot-3d.png)
 
+**Print finishes.** Hot foil, spot UV and emboss are part of the design: the
+3D preview shows foil as metal, varnish as gloss and emboss as relief, and the
+export adds one plate per finish, in register with the artwork, for the
+printer to make the foil block or die from. The board's own coating (matte,
+soft-touch, gloss) comes from the brief.
+
 **Layer editing.** Every element is addressable. Ask for the headline a shade
 smaller and that one layer changes; nothing else is touched. Or click the layer
 yourself and change its text, size, colour or position directly: instant, and
@@ -102,6 +108,7 @@ in.
 - artwork as SVG, fonts embedded, every element still editable
 - both superimposed, for checking
 - each face on its own
+- a plate for each finish (foil, spot UV, emboss) the design uses
 - a technical spec sheet PDF for the printer
 - a plain-text briefing on fonts, colour space and bleed
 
@@ -169,7 +176,7 @@ Gemini with an instruction to build a scene around it and leave the package
 alone. Because the model is editing a render rather than inventing a box, the
 proportions, artwork and lettering survive.
 
-Eight settings are built in, and there is a free-text box for anything else:
+Ten settings are built in, and there is a free-text box for anything else:
 
 | | |
 |---|---|
@@ -180,6 +187,8 @@ Eight settings are built in, and there is a free-text box for anything else:
 | Studio seamless | Clean e-commerce cutout on a soft backdrop |
 | Flat lay | Overhead on linen with styled props |
 | Outdoors | Stone ledge in dappled shade |
+| Ethiopian heritage | Woven basket lid, habesha cloth, coffee ceremony details |
+| Vanity table | Mirror, warm morning light, everyday |
 | Dark and moody | One hard light, deep shadow, rim highlight |
 
 **OpenAI** works too ([platform.openai.com](https://platform.openai.com)) but

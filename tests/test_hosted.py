@@ -241,6 +241,15 @@ def main():
     check(any(l["text"] == "HABESHA NATURALS" for l in patched["layers"]), "layer patched")
     example = json.loads(post("h/example", {}).body)
     check(example["project"]["artwork"], "example project available")
+    ex = example["project"]
+    plates = [f["name"] for f in json.loads(post("h/export", {"project": ex}).body)["files"]
+              if "-plate-" in f["name"]]
+    check(any("plate-foil" in n for n in plates) and any("plate-emboss" in n for n in plates),
+          "finish plates exported: " + ", ".join(plates))
+    plate = post("h/export", {"project": ex, "file": next(n for n in plates if "foil" in n)})
+    check(plate.status == 200 and b"Hot foil plate" in plate.body[:2000], "foil plate renders")
+    mask = post("h/render", {"project": ex, "mode": "finish", "panel": "front", "scale": 4})
+    check(mask.status == 200 and mask.body.count(b'feColorMatrix') >= 2, "3D finish map renders")
 
     print()
     if failures:
