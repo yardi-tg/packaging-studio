@@ -192,6 +192,49 @@ is unavailable.
 
 ---
 
+## Put it on the web
+
+The same program runs as a website, so a colleague can use it without
+installing anything or holding any keys. It is built for Vercel:
+
+1. Import this repository at [vercel.com/new](https://vercel.com/new). No build
+   settings to change; `vercel.json` has them.
+2. Under *Settings → Environment Variables* add:
+
+   | Name | Value |
+   |---|---|
+   | `ANTHROPIC_API_KEY` | your key |
+   | `GEMINI_API_KEY` | your key, for the Photos tab (optional) |
+   | `ACCESS_CODES` | the code people type to get in, e.g. `6767`. Several: `6767,1234` |
+
+3. Redeploy. The site asks for the code, then works like the local app.
+
+How it differs from the local app:
+
+- **Projects live in each visitor's browser**, not on the server. *Save file*
+  and *Open file* (top bar) back a project up or move it to another computer.
+- **The keys stay on the server.** Visitors pick the model and how hard it
+  thinks, from what you allow. By default that is Sonnet 5.5 (recommended) and
+  Haiku 5.5; Opus is left out because on a shared site you pay. Change it with
+  `ALLOWED_MODELS` (comma-separated ids), `HOSTED_MODEL` (the default) and
+  `HOSTED_EFFORTS` (default `medium,high`).
+- **A four-digit code is a light lock.** Wrong guesses are slowed down, but
+  set a monthly spending limit in the Anthropic console all the same.
+
+Hosts cut a request off after a few minutes, so a long design pass runs as a
+chain of requests: the designer pauses when it wants to look at its work or
+when time runs short, the browser draws the panel or simply calls again, and
+the conversation carries on exactly where it stopped. `core/hosted.py` and
+`web/hosted.js` are the two halves.
+
+Try the website build on your own machine first:
+
+```bash
+python3 server.py --hosted        # code 6767
+```
+
+---
+
 ## Adding your own agents
 
 The studio is not hard-wired to packaging. An agent is one file in `agents/`
@@ -231,10 +274,13 @@ starts from the project state. `core/agent.py` has the details.
 
 ```
 server.py              Local HTTP server, standard library only
+api/index.py           The same API as a Vercel function (website mode)
 core/
   llm.py               Anthropic Messages API, streamed, over urllib
   agent.py             Append-only tool loop, compaction, usage accounting
   visual.py            Lets the agent see renders of its own work
+  hosted.py            Website mode: stateless requests, access code
+  outputs.py           Previews, 3D textures and production files
   registry.py          Which agents exist
   dieline.py           Structural geometry → cut and crease paths
   artwork.py           Layer spec → SVG
@@ -255,6 +301,7 @@ projects/              Your projects, images and exports
 
 ```bash
 python3 tests/test_agent_flow.py   # agent loop vs. a mock that enforces the API's rules
+python3 tests/test_hosted.py       # the website: code, pause and resume, files
 python3 tests/test_photos.py       # photoshoot and Gemini model detection
 ```
 

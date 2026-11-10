@@ -1,0 +1,6 @@
+tests
+docs
+fonts
+start.command
+projects/*
+!projects/example-nigella-glow-serum

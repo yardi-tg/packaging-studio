@@ -25,6 +25,7 @@ if sys.version_info < (3, 8):
 import base64
 import json
 import mimetypes
+import os
 import queue
 import re
 import socket
@@ -34,7 +35,13 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import artwork, config, dieline, fonts, imagegen, pdfwriter, registry, store, visual
+if "--hosted" in sys.argv:
+    # Try the website build locally: projects in the browser, keys from the
+    # environment or .env, and an access code (ACCESS_CODES, default 6767 here).
+    os.environ["PACKAGING_HOSTED"] = "1"
+    os.environ.setdefault("ACCESS_CODES", "6767")
+
+from core import artwork, config, dieline, fonts, imagegen, outputs, registry, store, visual
 
 MAX_BODY = 20 * 1024 * 1024
 _RUNNING: set = set()
@@ -87,8 +94,44 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routing ------------------------------------------------------------
 
+    def _hosted_call(self) -> bool:
+        """Website mode: the API is core/hosted.py, as on Vercel."""
+        if not config.HOSTED:
+            return False
+        parsed = urllib.parse.urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
+            return False
+        from core import hosted
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if 0 < length <= MAX_BODY else b""
+        headers = {k.lower(): v for k, v in self.headers.items()}
+        reply = hosted.handle(self.command, parsed.path, parsed.query, headers, body)
+        self.send_response(reply.status)
+        for key, value in reply.header_list():
+            self.send_header(key, value)
+        if reply.stream is None:
+            self.send_header("Content-Length", str(len(reply.body)))
+            self.end_headers()
+            try:
+                self.wfile.write(reply.body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return True
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            for chunk in reply.stream:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        return True
+
     def do_GET(self):
         try:
+            if self._hosted_call():
+                return
             self._route_get()
         except Exception as exc:
             traceback.print_exc()
@@ -96,6 +139,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if self._hosted_call():
+                return
             self._route_post()
         except Exception as exc:
             traceback.print_exc()
@@ -182,34 +227,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), mime + charset)
 
     def _render(self, project, query):
-        dl = project.get("dieline")
-        if not dl:
-            return self._error("No structure yet", 409)
-        spec = project.get("artwork") or {"panels": {}}
         mode = (query.get("mode") or ["flat"])[0]
-        labels = (query.get("labels") or ["0"])[0] == "1"
-        css = fonts.embed_css(spec)
-
+        spec = project.get("artwork") or {"panels": {}}
         # The in-browser preview gets plain URLs: inlining every image as
         # base64 makes the document enormous and the browser crawl. Anything
         # that leaves the browser gets real data URIs so it stays standalone.
         standalone = mode in ("print", "panel")
         assets = store.asset_map(project, spec, as_data=standalone)
-
-        if mode == "dieline":
-            svg = dieline.to_svg(dl, show_labels=True, show_dimensions=True)
-        elif mode == "panel":
-            panel_id = (query.get("panel") or [""])[0]
-            geo = next((p for p in dl["panels"] if p["id"] == panel_id), None)
-            if not geo:
-                return self._error("Unknown panel", 404)
-            svg = artwork.render_panel_svg(spec, geo, assets,
-                                           font_css=fonts.embed_css(spec, [geo["id"]]))
-        elif mode == "print":
-            svg = artwork.full_svg(spec, dl, assets, with_dieline=False, font_css=css)
-        else:
-            svg = artwork.full_svg(spec, dl, assets, with_dieline=True,
-                                   labels=labels, font_css=css)
+        try:
+            svg = outputs.render(project, mode, (query.get("panel") or [""])[0],
+                                 (query.get("labels") or ["0"])[0] == "1", assets)
+        except ValueError as exc:
+            return self._error(str(exc), 409)
+        except LookupError as exc:
+            return self._error(str(exc), 404)
         self._send(200, svg, "image/svg+xml; charset=utf-8")
 
     def _textures(self, project):
@@ -221,19 +252,12 @@ class Handler(BaseHTTPRequestHandler):
         # references, so these do need data URIs -- but only for the images
         # the design actually uses.
         assets = store.asset_map(project, spec, as_data=True)
-        css = fonts.embed_css(spec)
         out = {}
-        for geo in dl["panels"]:
-            if not geo.get("printable", True):
-                continue
-            svg = artwork.render_panel_svg(spec, geo, assets, scale=10,
-                                           font_css=fonts.embed_css(spec, [geo["id"]]))
+        for face in outputs.texture_panels(project):
+            svg = outputs.render(project, "panel", face["id"], assets=assets, scale=10)
             encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
-            w, h = artwork.design_size(geo)
-            out[geo["id"]] = {
-                "url": f"data:image/svg+xml;base64,{encoded}",
-                "w": w, "h": h, "label": geo["label"],
-            }
+            out[face["id"]] = {"url": f"data:image/svg+xml;base64,{encoded}",
+                               "w": face["w"], "h": face["h"], "label": face["label"]}
         self._json({"textures": out, "dims": dl["dims"], "box_type": dl["box_type"]})
 
     # -- POST ---------------------------------------------------------------
@@ -386,38 +410,14 @@ class Handler(BaseHTTPRequestHandler):
                     "layers": artwork.layer_index(project["artwork"])})
 
     def _export(self, project):
-        dl = project.get("dieline")
-        if not dl:
-            return self._error("No structure yet", 409)
+        try:
+            plan = outputs.export_plan(project)
+        except ValueError as exc:
+            return self._error(str(exc), 409)
         spec = project.get("artwork") or {"panels": {}}
         assets = store.asset_map(project, spec, as_data=True)
-        css = fonts.embed_css(spec)
-        base = re.sub(r"[^A-Za-z0-9]+", "-",
-                      (project.get("brief", {}).get("product_name")
-                       or project.get("name", "package"))).strip("-").lower()[:40]
-        dims = dl["dims"]
-        suffix = f'{dims["width"]:.0f}x{dims["depth"]:.0f}x{dims["height"]:.0f}'
-
-        store.write_export(project["id"], f"{base}-dieline-{suffix}.svg",
-                           dieline.to_svg(dl))
-        store.write_export(project["id"], f"{base}-dieline-{suffix}.pdf",
-                           pdfwriter.dieline_pdf(dl))
-        store.write_export(project["id"], f"{base}-artwork-{suffix}.svg",
-                           artwork.full_svg(spec, dl, assets, with_dieline=False,
-                                            font_css=css))
-        store.write_export(project["id"], f"{base}-artwork-with-dieline-{suffix}.svg",
-                           artwork.full_svg(spec, dl, assets, with_dieline=True,
-                                            font_css=css))
-        store.write_export(project["id"], f"{base}-spec-sheet.pdf",
-                           pdfwriter.spec_sheet_pdf(project))
-        for geo in dl["panels"]:
-            if geo.get("printable", True):
-                store.write_export(
-                    project["id"], f"{base}-panel-{geo['id']}.svg",
-                    artwork.render_panel_svg(spec, geo, assets,
-                                             font_css=fonts.embed_css(spec, [geo["id"]])))
-        store.write_export(project["id"], "READ-ME-FIRST.txt",
-                           _export_readme(project, dl))
+        for name, _mime, make in plan:
+            store.write_export(project["id"], name, make(assets))
         store.save(project)
         self._json({"ok": True, "files": store.list_exports(project["id"])})
 
@@ -444,22 +444,7 @@ class Handler(BaseHTTPRequestHandler):
         if not text and not asset_ids:
             return self._error("Empty message", 400)
 
-        blocks = []
-        for asset_id in asset_ids:
-            asset = next((a for a in project.get("assets", [])
-                          if a["id"] == asset_id), None)
-            if not asset:
-                continue
-            block = store.asset_for_claude(project["id"], asset)
-            if block:
-                blocks.append(block)
-                blocks.append({
-                    "type": "text",
-                    "text": f'[uploaded image "{asset["name"]}", referenced in '
-                            f'artwork as src "asset:{asset["id"]}"]',
-                })
-        if text:
-            blocks.append({"type": "text", "text": text})
+        blocks = store.message_blocks(project, text, asset_ids)
 
         agent = registry.get(project.get("agent"))
         events: "queue.Queue" = queue.Queue()
@@ -498,6 +483,8 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             if event is None:
                 break
+            if event.get("type") in ("checkpoint", "suspend"):
+                continue    # website bookkeeping; the project is on disk here
             try:
                 payload = json.dumps(event, ensure_ascii=False)
                 self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
@@ -511,74 +498,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
-def _public(project: dict) -> dict:
-    """The project without the raw API blocks the interface has no use for."""
-    out = {k: v for k, v in project.items() if k != "messages"}
-    out["messages"] = [
-        {"role": m["role"], "text": m.get("display", ""),
-         "tools": m.get("tools") or [], "cost": m.get("cost")}
-        for m in project.get("messages", [])
-        if not m.get("hidden") and m.get("display")
-    ]
-    if project.get("artwork"):
-        out["layers"] = artwork.layer_index(project["artwork"])
-    return out
-
-
-def _export_readme(project, dl) -> str:
-    dims = dl["dims"]
-    fonts_used = (project.get("artwork") or {}).get("fonts") or {}
-    names = [artwork.FONT_CATALOG.get(v, (v,))[0] for v in fonts_used.values()]
-    usage = project.get("usage") or {}
-    return f"""PACKAGING STUDIO - EXPORT
-=========================
-
-Project:    {project.get('name')}
-Structure:  {dl['box_name']} ({dl['box_short']})
-Inside:     W {dims['width']:.0f} x D {dims['depth']:.0f} x H {dims['height']:.0f} mm
-Flat sheet: {dl['sheet']['width']:.0f} x {dl['sheet']['height']:.0f} mm
-Material:   {dl['material_hint']}
-API cost:   ${usage.get('cost_usd', 0):.4f} across {usage.get('runs', 0)} requests
-
-FILES
------
-*-dieline-*.svg / .pdf
-    The cutting contour on its own, at 1:1.
-    Solid red  = cut line.
-    Dashed blue = crease line (fold).
-    This is what you send to the box maker.
-
-*-artwork-*.svg
-    The print image on the flat layout, without cut lines.
-    Opens in Adobe Illustrator, Affinity Designer and Inkscape with every
-    element still editable.
-
-*-artwork-with-dieline-*.svg
-    Both on top of each other. Good for checking, not for printing.
-
-*-panel-*.svg
-    Each face of the box on its own.
-
-*-spec-sheet.pdf
-    Technical spec sheet for the printer and the box maker.
-
-CHECK BEFORE PRINTING
----------------------
-1. Fonts: this file uses {', '.join(names) or 'system fonts'}.
-   They are all free via Google Fonts and are embedded in the SVG. If your
-   printer wants certainty, convert text to outlines in your design app
-   (Type > Create Outlines) before handing the file over.
-2. Colour: the file is RGB. Your printer will convert to CMYK, or you can.
-   Expect slight shifts, especially in strong blues and oranges.
-3. Bleed: {dl['bleed']:.0f} mm is allowed for. Background areas must run past
-   the cut line.
-4. Material thickness: on corrugated, thickness is added outside the inside
-   dimension.
-5. Have the mandatory information checked. For cosmetics in Ethiopia that
-   means the EFDA rules. The copy here is a design proposal, not legal advice.
-
-Made with Packaging Studio, running on your own machine.
-"""
+_public = outputs.public
 
 
 def _free_port(preferred: int) -> int:

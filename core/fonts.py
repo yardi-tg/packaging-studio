@@ -13,14 +13,18 @@ Which means:
 
 from __future__ import annotations
 import base64
+import pathlib
 import re
+import tempfile
 import threading
 import urllib.error
 import urllib.request
 
 from . import artwork, config
 
-FONT_DIR = config.ROOT / "fonts"
+# On the website the program's own folder is read-only; the temp dir is not.
+FONT_DIR = (pathlib.Path(tempfile.gettempdir()) / "packaging-studio-fonts"
+            if config.HOSTED else config.ROOT / "fonts")
 _CACHE: dict = {}
 _LOCK = threading.Lock()
 _FAILED: set = set()
@@ -55,8 +59,9 @@ def _load_family(family: str) -> str:
     """The @font-face rules for one family, with data URIs."""
     safe = re.sub(r"[^A-Za-z0-9]+", "_", family)
     cached = FONT_DIR / f"{safe}.css"
-    if cached.exists():
-        return cached.read_text(encoding="utf-8")
+    for known in (cached, config.ROOT / "fonts" / f"{safe}.css"):
+        if known.exists():
+            return known.read_text(encoding="utf-8")
     if family in _FAILED:
         return ""
 
@@ -99,8 +104,11 @@ def _load_family(family: str) -> str:
         if not result:
             _FAILED.add(family)
             return ""
-        FONT_DIR.mkdir(parents=True, exist_ok=True)
-        cached.write_text(result, encoding="utf-8")
+        try:
+            FONT_DIR.mkdir(parents=True, exist_ok=True)
+            cached.write_text(result, encoding="utf-8")
+        except OSError:
+            pass   # no disk cache; the in-memory one still holds it
         return result
     except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
         _FAILED.add(family)

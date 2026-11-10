@@ -3,6 +3,11 @@
 projects/<id>/project.json   brief, dieline, artwork spec, chat history, usage
 projects/<id>/assets/        uploaded reference images, logos, generated art
 projects/<id>/exports/       generated SVG, PDF and PNG files
+
+On the website (config.HOSTED) there is no disk to keep anything on: the
+browser owns the project and sends it, with the images a request needs, along
+with that request. Files then live in memory for the one request; see
+use_memory().
 """
 
 from __future__ import annotations
@@ -12,11 +17,65 @@ import json
 import mimetypes
 import re
 import shutil
+import threading
 import uuid
 
 from . import config
 
 MAX_ASSET_BYTES = 12 * 1024 * 1024
+
+_local = threading.local()
+
+
+class _Memory:
+    """One request's files, when they cannot go to disk."""
+
+    def __init__(self, files=None):
+        self.files = dict(files or {})   # asset id -> (bytes, mime)
+        self.new = []                    # asset ids created during the request
+        self.exports = {}                # file name -> bytes
+
+
+def use_memory(files=None) -> _Memory:
+    """Hosted mode: keep this thread's project files in memory.
+
+    files maps asset id to (bytes, mime type): the images the browser sent
+    along. Call it in the thread that does the work, at the start of a request.
+    """
+    _local.mem = _Memory(files)
+    return _local.mem
+
+
+def _mem() -> _Memory:
+    mem = getattr(_local, "mem", None)
+    if mem is None:
+        mem = _local.mem = _Memory()
+    return mem
+
+
+def take_new_files() -> list:
+    """Images made during this request (generated motifs, photos), once each,
+    so the browser can store them."""
+    mem = _mem()
+    out = []
+    for asset_id in mem.new:
+        data, mime = mem.files.get(asset_id, (b"", ""))
+        if data:
+            out.append({"id": asset_id, "mime": mime,
+                        "data": base64.b64encode(data).decode("ascii")})
+    mem.new = []
+    return out
+
+
+def safe_name(filename: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", filename or "")[:80]
+
+
+def _asset_bytes(project_id: str, asset_id: str):
+    if config.HOSTED:
+        return _mem().files.get(asset_id, (None, None))[0]
+    path = asset_path(project_id, asset_id)
+    return path.read_bytes() if path else None
 
 
 def _now() -> str:
@@ -94,6 +153,8 @@ def load(project_id: str):
 
 def save(project: dict) -> dict:
     project["updated"] = _now()
+    if config.HOSTED:
+        return project      # the browser stores it
     path = _dir(project["id"])
     path.mkdir(parents=True, exist_ok=True)
     (path / "project.json").write_text(
@@ -116,14 +177,20 @@ def add_asset(project: dict, filename: str, data: bytes,
         raise ValueError("File too large. 12 MB maximum per image.")
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename or "image")[:60] or "image"
     asset_id = f"{uuid.uuid4().hex[:8]}_{safe}"
-    path = _dir(project["id"]) / "assets" / asset_id
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    mime = mimetypes.guess_type(safe)[0] or "image/png"
+    if config.HOSTED:
+        mem = _mem()
+        mem.files[asset_id] = (data, mime)
+        mem.new.append(asset_id)
+    else:
+        path = _dir(project["id"]) / "assets" / asset_id
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
     asset = {
         "id": asset_id,
         "name": filename,
         "role": role,
-        "mime": mimetypes.guess_type(safe)[0] or "image/png",
+        "mime": mime,
         "bytes": len(data),
         "added": _now(),
     }
@@ -138,10 +205,10 @@ def asset_path(project_id: str, asset_id: str):
 
 
 def asset_data_url(project_id: str, asset_id: str, mime: str = "image/png") -> str:
-    path = asset_path(project_id, asset_id)
-    if not path:
+    data = _asset_bytes(project_id, asset_id)
+    if not data:
         return ""
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    encoded = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{encoded}"
 
 
@@ -192,8 +259,8 @@ def asset_map(project: dict, spec: dict = None, as_data: bool = True) -> dict:
 
 def asset_for_claude(project_id: str, asset: dict):
     """An image block in the shape the Anthropic Messages API expects."""
-    path = asset_path(project_id, asset["id"])
-    if not path:
+    data = _asset_bytes(project_id, asset["id"])
+    if not data:
         return None
     mime = asset.get("mime", "image/png")
     if mime not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
@@ -203,13 +270,36 @@ def asset_for_claude(project_id: str, asset: dict):
         "source": {
             "type": "base64",
             "media_type": mime,
-            "data": base64.b64encode(path.read_bytes()).decode("ascii"),
+            "data": base64.b64encode(data).decode("ascii"),
         },
     }
 
 
+def message_blocks(project: dict, text: str, asset_ids: list) -> list:
+    """The content of a new user message: attached images, then the text."""
+    blocks = []
+    for asset_id in asset_ids or []:
+        asset = next((a for a in project.get("assets", []) if a["id"] == asset_id), None)
+        if not asset:
+            continue
+        block = asset_for_claude(project["id"], asset)
+        if block:
+            blocks.append(block)
+            blocks.append({
+                "type": "text",
+                "text": f'[uploaded image "{asset["name"]}", referenced in '
+                        f'artwork as src "asset:{asset["id"]}"]',
+            })
+    if text:
+        blocks.append({"type": "text", "text": text})
+    return blocks
+
+
 def write_export(project_id: str, filename: str, data) -> str:
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename)[:80]
+    safe = safe_name(filename)
+    if config.HOSTED:
+        _mem().exports[safe] = data.encode("utf-8") if isinstance(data, str) else data
+        return safe
     path = _dir(project_id) / "exports" / safe
     path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(data, str):

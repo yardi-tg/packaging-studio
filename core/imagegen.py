@@ -337,6 +337,15 @@ PRESERVE = (
 )
 
 
+def _mime_of(data: bytes) -> str:
+    """What a picture really is, whatever it was called on the way here."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
+
+
 def scene_catalog() -> list:
     return [{"id": key, "label": value["label"], "blurb": value["blurb"]}
             for key, value in SCENES.items()]
@@ -370,13 +379,13 @@ def photoshoot(project: dict, render_png: bytes, scene: str = "studio",
         prompt += f"\n\nAlso: {notes.strip()}"
     prompt += "\n\n" + GUARDRAIL
 
-    parts = [{"inline_data": {"mime_type": "image/png",
+    parts = [{"inline_data": {"mime_type": _mime_of(render_png),
                               "data": base64.b64encode(render_png).decode("ascii")}}]
     if front_png:
         # The 3D render is small and slightly angled, so fine lettering is soft.
         # The flat front at full resolution is the model's reference for what
         # the print must say and look like, letter for letter.
-        parts.append({"inline_data": {"mime_type": "image/png",
+        parts.append({"inline_data": {"mime_type": _mime_of(front_png),
                                       "data": base64.b64encode(front_png).decode("ascii")}})
         prompt += ("\n\nThe second image is the exact flat artwork of the front "
                    "panel. Use it as the reference for every letter, colour and "

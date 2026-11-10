@@ -44,6 +44,11 @@ class ThinkingMismatch(LLMError):
     """The API refused earlier thinking blocks: the conversation prefix changed."""
 
 
+class Timeout(LLMError):
+    """The request ran out of time before the answer was complete. Only on the
+    website, where one request may run for a few minutes at most."""
+
+
 class Truncated(LLMError):
     """The answer hit max_tokens part-way through a tool call."""
 
@@ -111,7 +116,8 @@ class _Retryable(LLMError):
 
 def stream(messages: list, system: str = "", tools: list = None,
            model: str = None, effort: str = None, max_tokens: int = None,
-           on_event=None, retries: int = 4, timeout: int = 240) -> dict:
+           on_event=None, retries: int = 4, timeout: int = 240,
+           deadline: float = None) -> dict:
     """One model turn. Returns the message exactly as the API produced it.
 
     on_event receives small dicts while the turn is being written:
@@ -119,6 +125,9 @@ def stream(messages: list, system: str = "", tools: list = None,
       {"kind": "thinking"}                         the model started thinking
       {"kind": "tool", "name": "...", "chars": n}  a tool call is being written
       {"kind": "restart"}                          a retry began; drop partial text
+
+    deadline is a time.monotonic() value. Past it the call stops with Timeout,
+    whatever state it is in.
     """
     api_key = config.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -140,13 +149,21 @@ def stream(messages: list, system: str = "", tools: list = None,
     if supports_effort(model):
         payload["output_config"] = {"effort": effort}
 
+    def left() -> float:
+        return deadline - time.monotonic() if deadline else float(timeout)
+
     last = None
     for attempt in range(retries):
         if attempt:
+            pause = min(30, 2 ** attempt * 2)
+            if left() < pause + 20:
+                raise Timeout(f"Out of time. Last error: {last}")
             notify({"kind": "restart"})
-            time.sleep(min(30, 2 ** attempt * 2))
+            time.sleep(pause)
+        if left() < 5:
+            raise Timeout("Out of time before the call could start.")
         try:
-            resp = _open(payload, api_key, timeout)
+            resp = _open(payload, api_key, max(5, min(timeout, int(left()))))
         except urllib.error.HTTPError as exc:
             err = _classify_http(exc)
             if isinstance(err, _Retryable):
@@ -158,11 +175,13 @@ def stream(messages: list, system: str = "", tools: list = None,
                             "Check your internet connection.")
             continue
         try:
-            message = _read_stream(resp, notify)
+            message = _read_stream(resp, notify, deadline)
         except _Retryable as exc:
             last = exc
             continue
         except (OSError, ValueError) as exc:
+            if deadline and left() <= 1:
+                raise Timeout("Out of time while the answer was being written.")
             last = LLMError(f"The connection to Anthropic dropped: {exc}")
             continue
         finally:
@@ -180,12 +199,14 @@ def stream(messages: list, system: str = "", tools: list = None,
     raise last or LLMError("Unknown error calling Anthropic.")
 
 
-def _read_stream(resp, notify) -> dict:
+def _read_stream(resp, notify, deadline: float = None) -> dict:
     """Rebuild the final message from server-sent events."""
     message = {"role": "assistant", "content": [], "usage": {}}
     partial = {}
     names = {}
     for raw in resp:
+        if deadline and time.monotonic() > deadline:
+            raise Timeout("Out of time while the answer was being written.")
         line = raw.decode("utf-8", "replace").rstrip("\r\n")
         if not line.startswith("data:"):
             continue

@@ -22,6 +22,10 @@
     <select id="projectSelect" aria-label="Project"></select>
     <button id="newProject" class="btn quiet">New</button>
     <button id="deleteProject" class="btn quiet" title="Delete this project">Delete</button>
+    <button id="saveFile" class="btn quiet" data-hosted
+            title="Projects live in this browser. Save a copy to keep it safe or move it to another computer.">Save file</button>
+    <button id="openFile" class="btn quiet" data-hosted title="Open a saved project file">Open file</button>
+    <input type="file" id="openFileInput" accept=".json,application/json" hidden>
   </div>
 
   <div class="rail-meter" id="meter" hidden>
@@ -127,9 +131,9 @@
         <div class="export">
           <div class="export-lead">
             <h3>Production files</h3>
-            <p>Writes the dieline as PDF and SVG with spot-colour knife lines, the
+            <p>The dieline as PDF and SVG with spot-colour knife lines, the
                artwork with bleed, each face on its own, and a spec sheet for your
-               printer into this project's folder.</p>
+               printer.</p>
             <button id="doExport" class="btn primary">Generate files</button>
           </div>
           <ul id="exportList" class="files"></ul>
@@ -201,11 +205,15 @@
   <form method="dialog" class="sheet-body">
     <h2>Settings</h2>
 
-    <label class="field" for="anthropicKey">
+    <p class="note" data-hosted>The keys are looked after by whoever runs this site.
+       Choose the model and how hard it thinks; your choice is remembered in
+       this browser.</p>
+
+    <label class="field" for="anthropicKey" data-local>
       <span>Anthropic API key <em id="anthropicState"></em></span>
       <input id="anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
     </label>
-    <p class="note">From console.anthropic.com. Written to the <code>.env</code> file
+    <p class="note" data-local>From console.anthropic.com. Written to the <code>.env</code> file
        next to the program and only ever sent to Anthropic.</p>
 
     <label class="field" for="modelSelect">
@@ -223,23 +231,23 @@
       </select>
     </label>
 
-    <div class="split"></div>
+    <div class="split" data-local></div>
 
-    <label class="field" for="geminiKey">
+    <label class="field" for="geminiKey" data-local>
       <span>Google Gemini key <em id="geminiState"></em>
         <button type="button" class="clear" data-clear="GEMINI_API_KEY">Remove</button></span>
       <input id="geminiKey" type="password" placeholder="paste your key" autocomplete="off" spellcheck="false">
     </label>
-    <p class="note">For the Photos tab: puts your package into real settings — held in
+    <p class="note" data-local>For the Photos tab: puts your package into real settings — held in
        a hand, on a marble counter, on a shelf. Claude cannot make photographs. Free
        tier at aistudio.google.com.</p>
 
-    <div class="probe-row">
+    <div class="probe-row" data-local>
       <button type="button" id="probeBtn" class="btn">Test connection</button>
       <span id="probeResult" class="note" style="margin:0"></span>
     </div>
 
-    <details class="extra">
+    <details class="extra" data-local>
       <summary>Use OpenAI instead</summary>
       <p class="note">Generates motifs, but cannot do the Photos tab: that needs a model
          which edits the render rather than inventing a new box.</p>
@@ -258,7 +266,24 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- website only: the access code ------------------------------------ -->
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="gate-card" autocomplete="off">
+    <svg class="gate-mark" width="34" height="38" viewBox="0 0 17 19" aria-hidden="true">
+      <rect x="1" y="1" width="15" height="17" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <path d="M1 6.5h15" stroke="currentColor" stroke-width="1" stroke-dasharray="2.4 2"/>
+    </svg>
+    <h1>Packaging Studio</h1>
+    <p>Enter your four-digit access code.</p>
+    <input id="gateCode" class="gate-code" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+           autocomplete="one-time-code" aria-label="Access code" placeholder="····">
+    <p id="gateError" class="gate-error" role="alert"></p>
+    <button class="btn primary wide" type="submit">Open</button>
+  </form>
+</div>
+
 <script src="/static/vendor/three.min.js"></script>
+<script src="/static/hosted.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

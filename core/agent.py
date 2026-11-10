@@ -20,6 +20,8 @@ project file.
 """
 
 from __future__ import annotations
+import base64
+import binascii
 import copy
 import hashlib
 import json
@@ -108,74 +110,116 @@ class Agent:
 
     # -- main loop ----------------------------------------------------------
 
-    def run(self, project: dict, user_blocks: list, emit) -> dict:
+    def run(self, project: dict, user_blocks: list, emit, model: str = None,
+            effort: str = None, resume: dict = None, clock=None) -> dict:
+        """Answer one message from the user, using tools as often as needed.
+
+        Locally this runs start to finish in one go. On the website one request
+        may only last a few minutes and the browser renders the previews, so a
+        run can pause and be picked up by the next request:
+
+          resume  None for a new message. To carry on a paused run: a dict of
+                  pictures the browser rendered, {tool_use_id: {"media_type",
+                  "data"}}, or {} to simply continue.
+          clock   decides whether there is still time to start another model
+                  call in this request (core/hosted.py).
+
+        Everything a pause needs lives in the project ("run_state",
+        "pending_tools"), so nothing is lost between requests.
+        """
         tools = {t.name: t for t in self.tools()}
         schemas = [t.schema() for t in tools.values()]
         system = self.system_prompt()
-        model = config.get("ANTHROPIC_MODEL")
-        effort = config.get("ANTHROPIC_EFFORT") or "high"
+        model = model or config.get("ANTHROPIC_MODEL")
+        effort = effort or config.get("ANTHROPIC_EFFORT") or "high"
         max_steps = config.get_int("MAX_AGENT_STEPS")
-
         signature = self._signature(model, system, schemas)
-        if self._active(project):
+
+        if resume is None:
+            if self._active(project):
+                if project.get("conversation_signature") != signature:
+                    self.compact(project, "the model, the app or the API key changed")
+                elif self._size(self._active(project)) > COMPACT_AT_CHARS:
+                    self.compact(project, "it had grown long")
+            project.pop("pending_tools", None)
+            project["conversation_signature"] = signature
+            self._open_turn(project, user_blocks)
+            project["run_state"] = _fresh_run(len(project["messages"]) - 1)
+        else:
+            if not project.get("run_state"):
+                emit({"type": "done", "text": "", "run": _fresh_run(0)["cost"],
+                      "total": project.get("usage", {})})
+                return {"ok": True, "text": ""}
             if project.get("conversation_signature") != signature:
-                self.compact(project, "the model, the app or the API key changed")
-            elif self._size(self._active(project)) > COMPACT_AT_CHARS:
-                self.compact(project, "it had grown long")
-        project["conversation_signature"] = signature
+                return self._fail(project, emit, "The model or the app changed while the "
+                                  "designer was working. Send your message again.")
+            pending = project.pop("pending_tools", None)
+            if pending:
+                project["messages"].append({
+                    "role": "user", "display": "", "hidden": True,
+                    "api": {"role": "user", "content": _fill_renders(pending, resume)},
+                })
+        run = project["run_state"]
+        emit({"type": "checkpoint"})
 
-        self._open_turn(project, user_blocks)
-        run_cost = {"input_tokens": 0, "output_tokens": 0, "cached_tokens": 0,
-                    "cost_usd": 0.0, "steps": 0}
-        final_text = ""
-        recovered = False
-        ceiling = None
-
-        step = 0
-        while step < max_steps:
+        while run["steps"] < max_steps:
+            if clock and not clock.can_start():
+                return self._pause(project, emit, "continue")
             emit({"type": "status", "text": "Thinking"})
             messages = [e["api"] for e in self._active(project)]
             try:
                 response = llm.stream(
                     messages=_with_cache_breakpoint(messages),
                     system=system, tools=schemas, model=model, effort=effort,
-                    max_tokens=ceiling, on_event=_relay(emit, tools),
+                    max_tokens=run.get("ceiling"), on_event=_relay(emit, tools),
+                    deadline=clock.deadline if clock else None,
                 )
+            except llm.Timeout:
+                emit({"type": "assistant_reset"})
+                if clock and not clock.had_full_time():
+                    return self._pause(project, emit, "continue")
+                return self._fail(project, emit,
+                                  "This step needed more time than the website allows. "
+                                  "Ask for one panel at a time, or choose a faster model.")
             except llm.ThinkingMismatch:
-                if recovered:
-                    return self._fail(project, run_cost, emit,
+                if run.get("recovered"):
+                    return self._fail(project, emit,
                                       "The conversation could not be resumed. "
                                       "Clear the history and try again.")
-                recovered = True
+                run["recovered"] = True
+                again = _user_blocks_of(project["messages"][run["turn"]])
                 self.compact(project, "earlier reasoning could no longer be verified")
-                self._open_turn(project, user_blocks)
+                self._open_turn(project, again)
+                run["turn"] = len(project["messages"]) - 1
+                emit({"type": "checkpoint"})
                 continue
             except llm.Truncated as exc:
                 if (exc.max_tokens or 0) >= llm.MAX_OUTPUT_CEILING:
-                    return self._fail(project, run_cost, emit,
+                    return self._fail(project, emit,
                                       "The design was too large for one answer. Ask "
                                       "for one panel at a time.")
-                ceiling = min(llm.MAX_OUTPUT_CEILING, (exc.max_tokens or 32000) * 2)
+                run["ceiling"] = min(llm.MAX_OUTPUT_CEILING, (exc.max_tokens or 32000) * 2)
                 emit({"type": "status", "text": "Answer was long, giving it more room"})
                 continue
             except llm.LLMError as exc:
-                return self._fail(project, run_cost, emit, str(exc))
+                return self._fail(project, emit, str(exc))
 
-            step += 1
-            ceiling = None
+            run["steps"] += 1
+            run["ceiling"] = None
             cost = llm.cost_of(response)
+            total = run["cost"]
             for key in ("input_tokens", "output_tokens", "cached_tokens"):
-                run_cost[key] += cost[key]
-            run_cost["cost_usd"] = round(run_cost["cost_usd"] + cost["cost_usd"], 6)
-            run_cost["steps"] += 1
-            run_cost["model_label"] = cost["model_label"]
-            emit({"type": "cost", "run": dict(run_cost)})
+                total[key] += cost[key]
+            total["cost_usd"] = round(total["cost_usd"] + cost["cost_usd"], 6)
+            total["steps"] += 1
+            total["model_label"] = cost["model_label"]
+            emit({"type": "cost", "run": dict(total)})
 
             text = llm.text_of(response)
             calls = llm.tool_calls_of(response)
             if text:
                 emit({"type": "assistant", "text": text})
-                final_text = text
+                run["final_text"] = text
 
             # Stored exactly as received, thinking blocks and all.
             assistant_api = {"role": "assistant", "content": response.get("content", [])}
@@ -186,26 +230,27 @@ class Agent:
 
             if not calls:
                 if response.get("stop_reason") == "refusal" and not text:
-                    final_text = "The model declined this request."
-                    emit({"type": "assistant", "text": final_text})
-                _record(project, run_cost)
-                store.save(project)
-                emit({"type": "done", "text": final_text, "run": dict(run_cost),
-                      "total": project.get("usage", {})})
-                return {"ok": True, "text": final_text, "cost": run_cost}
+                    run["final_text"] = "The model declined this request."
+                    emit({"type": "assistant", "text": run["final_text"]})
+                return self._finish(project, emit)
 
             results = [self._run_tool(project, tools, call, emit) for call in calls]
+            waiting = [r for r in results if "_await_render" in r]
+            if waiting:
+                # The browser has to draw these. The results wait in the
+                # project and are completed by the next request.
+                project["pending_tools"] = results
+                return self._pause(project, emit, "render", [
+                    {"request_id": r["tool_use_id"], "panel": r["_await_render"]}
+                    for r in waiting])
             project["messages"].append({
                 "role": "user", "api": {"role": "user", "content": results},
                 "display": "", "hidden": True,
             })
             store.save(project)
+            emit({"type": "checkpoint"})
 
-        _record(project, run_cost)
-        store.save(project)
-        emit({"type": "done", "text": final_text, "run": dict(run_cost),
-              "total": project.get("usage", {}), "note": "Step limit reached."})
-        return {"ok": True, "text": final_text, "cost": run_cost, "truncated": True}
+        return self._finish(project, emit, note="Step limit reached.")
 
     # -- pieces -------------------------------------------------------------
 
@@ -240,6 +285,16 @@ class Agent:
                            "trace": traceback.format_exc()[-800:]}
                 emit({"type": "error", "text": f"Tool {call.get('name')} failed: {exc}"})
         payload = payload if isinstance(payload, dict) else {"result": payload}
+
+        if "_await_render" in payload:
+            # Website: the picture comes from the browser with the next request.
+            emit({"type": "render_request", "request_id": call.get("id"),
+                  "panel": payload["_await_render"]})
+            emit({"type": "tool_end", "id": call.get("id"), "name": call.get("name"),
+                  "label": label, "ok": True})
+            return {"type": "tool_result", "tool_use_id": call.get("id"),
+                    "_await_render": payload["_await_render"]}
+
         emit({"type": "tool_end", "id": call.get("id"), "name": call.get("name"),
               "label": label, "ok": "error" not in payload})
 
@@ -260,16 +315,94 @@ class Agent:
             result["is_error"] = True
         return result
 
-    def _fail(self, project, run_cost, emit, message):
+    def _pause(self, project, emit, reason, renders=None) -> dict:
+        store.save(project)
+        emit({"type": "checkpoint"})
+        emit({"type": "suspend", "reason": reason, "renders": renders or []})
+        return {"ok": True, "suspended": reason}
+
+    def _finish(self, project, emit, note=None) -> dict:
+        run = project.pop("run_state", None) or _fresh_run(0)
+        project.pop("pending_tools", None)
+        _record(project, run["cost"])
+        store.save(project)
+        emit({"type": "checkpoint"})
+        done = {"type": "done", "text": run.get("final_text", ""), "run": dict(run["cost"]),
+                "total": project.get("usage", {})}
+        if note:
+            done["note"] = note
+        emit(done)
+        return {"ok": True, "text": run.get("final_text", ""), "cost": run["cost"],
+                "truncated": bool(note)}
+
+    def _fail(self, project, emit, message):
         # The open user turn has no answer. Retire the conversation so the next
         # message starts clean instead of tripping over the dangling turn.
+        run = project.pop("run_state", None) or _fresh_run(0)
+        project.pop("pending_tools", None)
         self.compact(project, "the previous request failed")
-        _record(project, run_cost)
+        _record(project, run["cost"])
         store.save(project)
+        emit({"type": "checkpoint"})
         emit({"type": "error", "text": message})
-        emit({"type": "done", "text": "", "run": dict(run_cost),
+        emit({"type": "done", "text": "", "run": dict(run["cost"]),
               "total": project.get("usage", {})})
-        return {"ok": False, "error": message, "cost": run_cost}
+        return {"ok": False, "error": message, "cost": run["cost"]}
+
+
+def _fresh_run(turn_index: int) -> dict:
+    return {"turn": turn_index, "steps": 0, "final_text": "", "ceiling": None,
+            "recovered": False,
+            "cost": {"input_tokens": 0, "output_tokens": 0, "cached_tokens": 0,
+                     "cost_usd": 0.0, "steps": 0}}
+
+
+def _user_blocks_of(entry: dict) -> list:
+    """What the user actually sent in a turn, without the state we attached."""
+    blocks = (entry.get("api") or {}).get("content") or []
+    if isinstance(blocks, str):
+        return [{"type": "text", "text": blocks}]
+    out = []
+    for block in blocks:
+        text = block.get("text", "") if block.get("type") == "text" else ""
+        if text.startswith("<project_state>") or text.startswith("Earlier conversation, summarised"):
+            continue
+        out.append(block)
+    return out
+
+
+def _fill_renders(results: list, pictures: dict) -> list:
+    """Complete tool results that waited for the browser to draw a panel. The
+    shape is exactly what a local run produces for the same tool call."""
+    out = []
+    for result in results:
+        panel = result.get("_await_render")
+        if panel is None:
+            out.append(result)
+            continue
+        picture = (pictures or {}).get(result.get("tool_use_id")) or {}
+        media = picture.get("media_type")
+        data = picture.get("data") or ""
+        valid = media in ("image/png", "image/jpeg", "image/webp") and 1000 < len(data) < 8_000_000
+        if valid:
+            try:
+                base64.b64decode(data, validate=True)
+            except (binascii.Error, ValueError):
+                valid = False
+        if valid:
+            note = json.dumps({"ok": True, "panel": panel,
+                               "note": "This is the actual render. Critique it, then "
+                                       "fix what needs it."}, ensure_ascii=False)
+            out.append({"type": "tool_result", "tool_use_id": result["tool_use_id"],
+                        "content": [{"type": "image", "source": {
+                                        "type": "base64", "media_type": media, "data": data}},
+                                    {"type": "text", "text": note}]})
+        else:
+            out.append({"type": "tool_result", "tool_use_id": result["tool_use_id"],
+                        "content": json.dumps({"error": "No preview could be made. Rely "
+                                               "on the layout check for now."}),
+                        "is_error": True})
+    return out
 
 
 def _with_cache_breakpoint(messages: list) -> list:

@@ -9,6 +9,14 @@ PROJECTS_DIR = ROOT / "projects"
 WEB_DIR = ROOT / "web"
 ENV_FILE = ROOT / ".env"
 
+# The website build (Vercel, or `python3 server.py --hosted` to try it locally).
+# Projects then live in the visitor's browser, the keys in the server's
+# environment, and access needs a code. See core/hosted.py.
+HOSTED = os.environ.get("PACKAGING_HOSTED", "").strip().lower() not in ("", "0", "false", "no")
+
+# Settings learnt at run time where there is no .env to write to (hosted).
+_runtime: dict = {}
+
 _DEFAULTS = {
     "ANTHROPIC_API_KEY": "",
     "ANTHROPIC_MODEL": "claude-opus-5-5",
@@ -92,7 +100,9 @@ _file_env = _parse_env_file(ENV_FILE)
 
 
 def get(key: str, default=None):
-    """Priority: real environment variable > .env file > built-in default."""
+    """Priority: learnt at run time > environment variable > .env > default."""
+    if _runtime.get(key):
+        return _runtime[key]
     if os.environ.get(key):
         return os.environ[key]
     if _file_env.get(key):
@@ -116,6 +126,13 @@ def reload_env():
 
 def write_env(updates: dict):
     """Write keys back to .env without destroying what is already there."""
+    if HOSTED:
+        # Read-only disk, and keys belong in the host's environment settings.
+        # Only what the program learns (which image model works) is kept, in
+        # memory, for as long as this server instance lives.
+        _runtime.update({k: v for k, v in updates.items()
+                         if v and not k.endswith("_API_KEY")})
+        return
     existing = _parse_env_file(ENV_FILE)
     existing.update({k: v for k, v in updates.items() if v is not None})
     lines = [
@@ -194,6 +211,49 @@ def price_usage(usage: dict, model: str) -> dict:
         "model": model,
         "model_label": price["label"],
     }
+
+
+# ---------------------------------------------------------------------------
+# The website: which models a visitor may pick
+# ---------------------------------------------------------------------------
+
+HOSTED_NOTES = {
+    "claude-sonnet-5-5": "recommended: strong design at a fair price",
+    "claude-haiku-5-5": "fastest and cheapest, for small edits",
+    "claude-opus-5-5": "best design judgement, about twice the price of Sonnet",
+    "claude-fable-5-2": "most capable, about four times the price of Sonnet",
+}
+
+
+def hosted_models() -> list:
+    """ALLOWED_MODELS, comma-separated. Opus is left out by default: on a
+    shared site the owner pays, and Sonnet designs well for half the price."""
+    wanted = [m.strip() for m in (get("ALLOWED_MODELS", "claude-sonnet-5-5,claude-haiku-5-5")
+                                  or "").split(",") if m.strip()]
+    out = []
+    for model_id in wanted or ["claude-sonnet-5-5"]:
+        known = next((m for m in MODEL_CHOICES if m["id"] == model_id), None)
+        out.append({"id": model_id,
+                    "label": known["label"] if known else pricing_for(model_id)["label"],
+                    "note": HOSTED_NOTES.get(model_id, known["note"] if known else "")})
+    return out
+
+
+def hosted_default_model() -> str:
+    ids = [m["id"] for m in hosted_models()]
+    wanted = get("HOSTED_MODEL", "claude-sonnet-5-5")
+    return wanted if wanted in ids else ids[0]
+
+
+def hosted_efforts() -> tuple:
+    allowed = [e.strip() for e in (get("HOSTED_EFFORTS", "medium,high") or "").split(",")]
+    return tuple(e for e in allowed if e in ("low", "medium", "high", "xhigh", "max")) or ("high",)
+
+
+def hosted_default_effort() -> str:
+    wanted = get("HOSTED_EFFORT", "high")
+    efforts = hosted_efforts()
+    return wanted if wanted in efforts else efforts[-1]
 
 
 def status() -> dict:

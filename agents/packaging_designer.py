@@ -8,7 +8,7 @@ it, the way a designer would.
 from __future__ import annotations
 import json
 
-from core import artwork, dieline, imagegen, layout, store, visual
+from core import artwork, config, dieline, imagegen, layout, store, visual
 from core.agent import Agent, Tool
 
 SYSTEM = """You are a senior packaging designer and packaging engineer working
@@ -30,9 +30,13 @@ When you have enough to start, do the whole first pass in one turn:
 1. set_brief
 2. build_structure (from the bottle or jar size: add 1-2 mm clearance per side)
 3. write_copy
-4. design_artwork for every printable panel, ideally in one call
+4. design_artwork for the front only, with concept, palette and fonts. The
+   front sets the system every other panel follows, so get it right first.
 5. look_at_design on the front, critique it honestly, fix with edit_layers
-6. look_at_design on "all" once, fix anything that jars across panels
+6. design_artwork for the back, then the remaining panels (sides, lid,
+   bottom) together in one more call. Keep each call to one or two large
+   panels: smaller calls are faster and more careful.
+7. look_at_design on "all" once, fix anything that jars across panels
 Then reply. Later requests are refinements: change the layers concerned with
 edit_layers, look again, reply. Never rebuild everything for a small change.
 
@@ -214,7 +218,7 @@ def _t_build_structure(project, params, emit):
         "blank_mm": {"width": dl["blank"]["width"], "height": dl["blank"]["height"]},
         "material": dl["material_hint"], "notes": dl["notes"],
         "panels": panels,
-        "next": "design_artwork for every printable panel, using these upright sizes.",
+        "next": "design_artwork for the front first, using these upright sizes.",
     }
 
 
@@ -314,6 +318,12 @@ def _t_look_at_design(project, params, emit):
     valid = {p["id"] for p in project["dieline"]["panels"] if p.get("printable", True)}
     if panel != "all" and panel not in valid:
         return {"error": f"Unknown panel {panel}.", "valid": sorted(valid) + ["all"]}
+
+    if config.HOSTED:
+        # On the website nobody on this side can draw: the run pauses, the
+        # browser renders the panel and sends the picture with the next
+        # request (core/agent.py, core/hosted.py).
+        return {"_await_render": panel}
 
     request_id = visual.request()
     emit({"type": "render_request", "request_id": request_id, "panel": panel})

@@ -96,6 +96,9 @@ function readFile(file) {
 /* boot ---------------------------------------------------------------- */
 
 async function boot() {
+  // On the website, hosted.js first checks the access code and takes over
+  // project storage. Locally there is nothing to wait for.
+  await (window.PS_READY || null);
   try {
     const status = await api("/api/status");
     Object.assign(state, {
@@ -112,7 +115,17 @@ async function boot() {
   }
   await loadProjects();
   wire();
-  if (!state.config.anthropic) $("settings").showModal();
+  if (!state.config.anthropic) {
+    if (window.PS) toast("This site is not set up yet: its owner still has to add the Anthropic key.", true);
+    else $("settings").showModal();
+  }
+}
+
+/* Images and files: plain URLs locally, stored copies on the website. */
+function setAssetUrl(id, apply) {
+  const url = `/api/projects/${state.projectId}/assets/${id}`;
+  if (!window.PS) { apply(url); return; }
+  window.PS.assetUrl(state.projectId, id).then((u) => { if (u) apply(u); });
 }
 
 function paintKeyState() {
@@ -494,7 +507,7 @@ function paintAssets() {
   }
   for (const asset of assets) {
     const img = document.createElement("img");
-    img.src = `/api/projects/${state.projectId}/assets/${asset.id}`;
+    setAssetUrl(asset.id, (url) => { img.src = url; });
     img.alt = asset.name; img.title = asset.name;
     list.appendChild(img);
   }
@@ -581,7 +594,7 @@ async function loadExports() {
       size.textContent = file.bytes > 1048576 ? (file.bytes / 1048576).toFixed(1) + " MB"
         : Math.max(1, Math.round(file.bytes / 1024)) + " KB";
       const link = document.createElement("a");
-      link.href = `/api/projects/${state.projectId}/exports/${encodeURIComponent(file.name)}`;
+      link.href = file.url || `/api/projects/${state.projectId}/exports/${encodeURIComponent(file.name)}`;
       link.textContent = "Download"; link.download = file.name;
       li.append(name, size, link);
       list.appendChild(li);
@@ -621,7 +634,9 @@ async function renderForAgent(requestId, panel, runEl) {
     const svg = await res.text();
     // give embedded webfonts a moment to decode before rasterising
     await new Promise((r) => setTimeout(r, 250));
-    const png = await svgToPng(svg, all ? 1500 : 1100, "image/jpeg", 0.9);
+    // On the website every picture travels with each later request, so it is
+    // sent a little lighter.
+    const png = await svgToPng(svg, all ? 1500 : 1100, "image/jpeg", window.PS ? 0.84 : 0.9);
     await api(`/api/projects/${state.projectId}/render_result`, {
       method: "POST",
       body: JSON.stringify({ request_id: requestId, png, media_type: "image/jpeg" }),
@@ -635,6 +650,10 @@ async function renderForAgent(requestId, panel, runEl) {
     refreshView();
   } catch (err) {
     console.warn("render for agent failed", err);
+    // Say so, so the designer does not wait for a picture that never comes.
+    api(`/api/projects/${state.projectId}/render_result`, {
+      method: "POST", body: JSON.stringify({ request_id: requestId, png: "", media_type: "image/jpeg" }),
+    }).catch(() => {});
   }
 }
 
@@ -866,6 +885,10 @@ function createThree(canvas) {
 
   const ctl = { ...CAMERAS.three, spin: false, surface: "studio", target: null };
   let dragging = false, lastX = 0, lastY = 0;
+  // Draw only when something changed and the view can be seen: a scene this
+  // rich costs real battery at 60 frames a second for nothing.
+  let dirty = 3;
+  const invalidate = (frames = 3) => { dirty = Math.max(dirty, frames); };
   canvas.addEventListener("pointerdown", (e) => {
     dragging = true; ctl.target = null; lastX = e.clientX; lastY = e.clientY;
     canvas.setPointerCapture(e.pointerId);
@@ -875,6 +898,7 @@ function createThree(canvas) {
     ctl.theta -= (e.clientX - lastX) * 0.008;
     ctl.phi = Math.max(0.3, Math.min(1.52, ctl.phi - (e.clientY - lastY) * 0.008));
     lastX = e.clientX; lastY = e.clientY;
+    invalidate();
   });
   const stop = () => { dragging = false; };
   canvas.addEventListener("pointerup", stop);
@@ -882,13 +906,14 @@ function createThree(canvas) {
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
     ctl.dist = Math.max(3, Math.min(24, ctl.dist * (1 + Math.sign(e.deltaY) * 0.1)));
+    invalidate();
   }, { passive: false });
 
   const loader = new THREE.TextureLoader();
   const cache = new Map();
   const tex = (url) => {
     if (cache.has(url)) return cache.get(url);
-    const t = loader.load(url);
+    const t = loader.load(url, () => invalidate());
     t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 8;
     if (THREE.sRGBEncoding !== undefined) t.encoding = THREE.sRGBEncoding;
     cache.set(url, t);
@@ -956,6 +981,7 @@ function createThree(canvas) {
     }
     buildStage(ctl.surface);
     resize();
+    invalidate(30);
   }
 
   function resize() {
@@ -964,12 +990,24 @@ function createThree(canvas) {
     renderer.setSize(rect.width, rect.height, false);
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
+    invalidate();
   }
   new ResizeObserver(resize).observe(canvas.parentElement);
   buildStage("studio");
 
+  function place() {
+    const r = ctl.dist;
+    camera.position.set(r * Math.sin(ctl.phi) * Math.sin(ctl.theta),
+                        r * Math.cos(ctl.phi) + 1.2,
+                        r * Math.sin(ctl.phi) * Math.cos(ctl.theta));
+    camera.lookAt(0, 1.15, 0);
+  }
+
   (function loop() {
     requestAnimationFrame(loop);
+    if (document.hidden || !canvas.offsetParent) return;
+    if (!ctl.target && !ctl.spin && dirty <= 0) return;
+    if (dirty > 0) dirty--;
     if (ctl.target) {
       // ease towards a preset view
       let dt = ctl.target.theta - ctl.theta;
@@ -981,20 +1019,18 @@ function createThree(canvas) {
     } else if (ctl.spin) {
       ctl.theta += 0.0035;
     }
-    const r = ctl.dist;
-    camera.position.set(r * Math.sin(ctl.phi) * Math.sin(ctl.theta),
-                        r * Math.cos(ctl.phi) + 1.2,
-                        r * Math.sin(ctl.phi) * Math.cos(ctl.theta));
-    camera.lookAt(0, 1.15, 0);
+    place();
     renderer.render(scene, camera);
   })();
+  document.addEventListener("visibilitychange", () => invalidate());
 
   return {
     build,
-    setSurface: (name) => { ctl.surface = name; if (current) build(current); else buildStage(name); },
+    setSurface: (name) => { ctl.surface = name; if (current) build(current); else { buildStage(name); invalidate(); } },
     view: (name) => { ctl.spin = false; ctl.target = { ...CAMERAS[name] }; },
-    toggleSpin: () => (ctl.spin = !ctl.spin),
-    snapshot: () => renderer.domElement.toDataURL("image/png"),
+    toggleSpin: () => { invalidate(); return (ctl.spin = !ctl.spin); },
+    redraw: () => invalidate(30),
+    snapshot: () => { place(); renderer.render(scene, camera); return renderer.domElement.toDataURL("image/png"); },
     ready: () => Boolean(current),
   };
 }
@@ -1013,7 +1049,9 @@ function paintScenes() {
     wrap.appendChild(btn);
   }
   const intro = $("photoIntro");
-  intro.innerHTML = state.config.image_provider === "none"
+  intro.innerHTML = state.config.image_provider === "none" && window.PS
+    ? "Photos are not switched on for this site yet: its owner has to add a Google Gemini key."
+    : state.config.image_provider === "none"
     ? "This needs an image model, because Claude cannot make photographs. Add a Google " +
       "Gemini key under <b>Settings</b> and this tab will put your package into real " +
       "settings — held in a hand, on a marble counter, on a shelf."
@@ -1028,10 +1066,12 @@ function paintGallery() {
   for (const photo of photos.slice().reverse()) {
     const card = document.createElement("div");
     card.className = "shot-card";
-    const url = `/api/projects/${state.projectId}/assets/${photo.id}`;
-    card.innerHTML = `<img src="${url}" alt="${escapeHtml(photo.scene || "photo")}" loading="lazy">`;
+    const img = document.createElement("img");
+    img.alt = photo.scene || "photo"; img.loading = "lazy";
+    card.appendChild(img);
     const link = document.createElement("a");
-    link.href = url; link.download = photo.name || "photo.png"; link.textContent = "Save";
+    setAssetUrl(photo.id, (url) => { img.src = url; link.href = url; });
+    link.download = photo.name || "photo.png"; link.textContent = "Save";
     card.appendChild(link);
     gallery.appendChild(card);
   }
@@ -1083,7 +1123,11 @@ async function send(event) {
   event?.preventDefault();
   if (state.busy) return;
   if (!state.projectId) { toast("Create a project first.", true); return; }
-  if (!state.config.anthropic) { $("settings").showModal(); return; }
+  if (!state.config.anthropic) {
+    if (window.PS) toast("This site is not set up yet: its owner still has to add the Anthropic key.", true);
+    else $("settings").showModal();
+    return;
+  }
 
   const input = $("input");
   const text = input.value.trim();
@@ -1323,7 +1367,7 @@ function wire() {
     try {
       await api(`/api/projects/${state.projectId}/export`, { method: "POST" });
       await loadExports();
-      toast("Files written to the project folder.");
+      toast(window.PS ? "Files are ready. Download what you need below." : "Files written to the project folder.");
     } catch (err) { toast(err.message, true); }
     finally { e.target.disabled = false; e.target.textContent = "Generate files"; }
   });

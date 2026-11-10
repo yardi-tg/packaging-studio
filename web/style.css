@@ -662,3 +662,47 @@ select:focus, input:focus, textarea:focus {
 }
 .editor-actions { display: flex; justify-content: space-between; margin-top: 10px; }
 .btn.danger:hover { color: var(--bad); }
+
+
+/* website mode ---------------------------------------------------------- */
+body:not(.hosted) [data-hosted] { display: none !important; }
+body.hosted [data-local] { display: none !important; }
+body.locked > :not(.gate):not(script) { visibility: hidden; }
+
+.gate {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  background: radial-gradient(1200px 700px at 50% 30%, #23262c 0%, #121316 70%);
+  color: #ece9e2;
+}
+.gate[hidden] { display: none !important; }
+.gate-card {
+  width: min(340px, calc(100vw - 32px));
+  display: grid; justify-items: center; gap: 10px;
+  padding: 34px 28px 28px;
+  border: 1px solid rgba(255, 255, 255, .08); border-radius: 18px;
+  background: rgba(255, 255, 255, .035);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
+  text-align: center;
+}
+.gate-mark { color: #c9a24e; margin-bottom: 4px; }
+.gate-card h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: .01em; }
+.gate-card p { margin: 0; color: #a7a39a; font-size: 13.5px; }
+.gate-code {
+  width: 100%; margin-top: 10px; padding: 12px 0;
+  border: 1px solid rgba(255, 255, 255, .14); border-radius: 12px;
+  background: rgba(0, 0, 0, .25); color: #fff;
+  font: 600 30px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: .55em; text-indent: .55em; text-align: center;
+  outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.gate-code:focus { border-color: #c9a24e; box-shadow: 0 0 0 3px rgba(201, 162, 78, .22); }
+.gate-code::placeholder { color: rgba(255, 255, 255, .22); }
+.gate-error { min-height: 18px; color: #f08c7d !important; font-size: 13px; }
+.gate-card .btn { margin-top: 4px; }
+.gate.checking .gate-card { opacity: .7; }
+.gate.shake .gate-card { animation: gate-shake .38s; }
+@keyframes gate-shake {
+  20%, 60% { transform: translateX(-7px); }
+  40%, 80% { transform: translateX(7px); }
+}
